@@ -169,7 +169,7 @@ def _append_results_to_workbook(out_path: Path, headers: List[str], rows: List[L
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     sheet_name = _unique_sheet_name(wb, f"DOE_{ts}")
     ws = wb.create_sheet(sheet_name)
-
+    print(ws)
     ws.append(headers)
     for r in rows:
         ws.append(r)
@@ -193,9 +193,9 @@ def main() -> int:
 
     # DOE-Parameter hier festlegen (statt UI)
     params: List[DOEParam] = [
-        DOEParam(key="POPULATION_SIZE", start=10, stop=200, steps=4, kind="int"),
-        DOEParam(key="GENERATIONS", start=50, stop=1000, steps=4, kind="int"),
-        DOEParam(key="SWAP_PROP", start=0.00, stop=0.20, steps=3, kind="float"),
+        DOEParam(key="POPULATION_SIZE", start=10, stop=50, steps=2, kind="int"),
+        DOEParam(key="GENERATIONS", start=50, stop=1000, steps=2, kind="int"),
+        DOEParam(key="SWAP_PROP", start=0.00, stop=0.20, steps=2, kind="float"),
     ]
 
     # Alle Designpunkte erzeugen (Full-Factorial)
