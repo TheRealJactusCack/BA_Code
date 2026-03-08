@@ -1,0 +1,12 @@
+--- a/config.py
++++ b/config.py
+@@ -6,7 +6,8 @@
+ POPULATION_SIZE = 50
+ ELITE_KEEP = 25
+ MACHINE_COUNT = 10
+-MACHINE_CLEARANCE_M = 1.0
++MACHINE_CLEARANCE_M = 1.0  # Worker-Clearance Quadrat am Worker-Punkt
++WORKER_PATH_WIDTH_M = 1.0  # Breite der Worker-Wege als Clearance
+ 
+ FLOOR_W = 20.0
+ FLOOR_H = 15.0      

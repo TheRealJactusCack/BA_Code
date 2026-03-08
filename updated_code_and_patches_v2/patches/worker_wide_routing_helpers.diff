@@ -1,0 +1,214 @@
+--- helpers.py (before)
++++ helpers.py (after)
+@@ -885,6 +885,158 @@
+     return cell
+ 
+ 
++
++def _cell_envelope_cells_for_width(cell: Tuple[int, int], width_m: float) -> set[Tuple[int, int]]:
++    """Zellen, die durch einen *Punkt* mit Breite (Worker-Weg) belegt wären.
++
++    Wir verwenden pad = width/2 + GRID_SIZE/2, damit das Ergebnis mit der Segment-Korridor-Logik konsistent ist.
++    """
++    gs = float(config.GRID_SIZE) if float(config.GRID_SIZE) > 0 else 1.0
++    half = float(width_m) / 2.0
++    pad = half + gs / 2.0
++    x, y = _world_of_cell_center(int(cell[0]), int(cell[1]))
++    return _cells_intersecting_rect(x - pad, y - pad, x + pad, y + pad)
++
++
++def _is_cell_safe_for_width(cell: Tuple[int, int], blocked: set[Tuple[int, int]], width_m: float) -> bool:
++    if cell in blocked:
++        return False
++    return not (_cell_envelope_cells_for_width(cell, width_m) & blocked)
++
++
++def _pick_free_cell_near_wide(
++    cell: Tuple[int, int],
++    blocked: set[Tuple[int, int]],
++    *,
++    width_m: float,
++    max_radius: int = 8,
++) -> Tuple[int, int]:
++    """Wie _pick_free_cell_near(), aber zusätzlich: Zelle muss auch für die gewünschte Wegbreite frei sein."""
++    if _is_cell_safe_for_width(cell, blocked, width_m):
++        return cell
++
++    sc, sr = cell
++    q = deque([(sc, sr, 0)])
++    seen = {(sc, sr)}
++    while q:
++        c, r, d = q.popleft()
++        if d > max_radius:
++            break
++        for nc, nr in _neighbors4(c, r):
++            if (nc, nr) in seen:
++                continue
++            seen.add((nc, nr))
++            if _is_cell_safe_for_width((nc, nr), blocked, width_m):
++                return (nc, nr)
++            q.append((nc, nr, d + 1))
++    return cell
++
++
++def _segment_corridor_cells(
++    a: Tuple[int, int],
++    b: Tuple[int, int],
++    *,
++    width_m: float,
++) -> set[Tuple[int, int]]:
++    """Zellen, die der Korridor (Breite width_m) für ein einzelnes 4-Nachbar-Segment belegt."""
++    gs = float(config.GRID_SIZE) if float(config.GRID_SIZE) > 0 else 1.0
++    half = float(width_m) / 2.0
++
++    c0, r0 = int(a[0]), int(a[1])
++    c1, r1 = int(b[0]), int(b[1])
++    x0, y0 = _world_of_cell_center(c0, r0)
++    x1, y1 = _world_of_cell_center(c1, r1)
++
++    if c0 == c1:
++        return _cells_intersecting_rect(x0 - half, min(y0, y1) - gs / 2.0, x0 + half, max(y0, y1) + gs / 2.0)
++    if r0 == r1:
++        return _cells_intersecting_rect(min(x0, x1) - gs / 2.0, y0 - half, max(x0, x1) + gs / 2.0, y0 + half)
++
++    return _cells_intersecting_rect(min(x0, x1) - half, min(y0, y1) - half, max(x0, x1) + half, max(y0, y1) + half)
++
++
++def _astar_path_wide(
++    start: Tuple[int, int],
++    goal: Tuple[int, int],
++    blocked: set[Tuple[int, int]],
++    *,
++    width_m: float,
++) -> Optional[List[Tuple[int, int]]]:
++    """A* (4-Nachbar), aber mit Wegbreite: jedes Segment darf mit seinem Korridor keine Blockaden schneiden."""
++    if start == goal:
++        return [start]
++
++    blocked_local = set(blocked)
++    blocked_local.discard(start)
++    blocked_local.discard(goal)
++
++    seg_ok_cache: dict[Tuple[Tuple[int, int], Tuple[int, int]], bool] = {}
++
++    def seg_ok(a: Tuple[int, int], b: Tuple[int, int]) -> bool:
++        k = (a, b) if a <= b else (b, a)
++        v = seg_ok_cache.get(k, None)
++        if v is not None:
++            return v
++        corridor = _segment_corridor_cells(a, b, width_m=width_m)
++        ok = not (corridor & blocked_local)
++        seg_ok_cache[k] = ok
++        return ok
++
++    def h(c: Tuple[int, int]) -> int:
++        return abs(c[0] - goal[0]) + abs(c[1] - goal[1])
++
++    open_heap: List[Tuple[int, int, Tuple[int, int]]] = []
++    heapq.heappush(open_heap, (h(start), 0, start))
++
++    gscore: dict[Tuple[int, int], int] = {start: 0}
++    came_from: dict[Tuple[int, int], Tuple[int, int]] = {}
++
++    while open_heap:
++        _, g, cur = heapq.heappop(open_heap)
++        if cur == goal:
++            path = [cur]
++            while cur in came_from:
++                cur = came_from[cur]
++                path.append(cur)
++            path.reverse()
++            return path
++
++        if g != gscore.get(cur, 10**12):
++            continue
++
++        for nb in _neighbors4(cur[0], cur[1]):
++            if nb in blocked_local:
++                continue
++            if not seg_ok(cur, nb):
++                continue
++            ng = g + 1
++            if ng < gscore.get(nb, 10**12):
++                gscore[nb] = ng
++                came_from[nb] = cur
++                heapq.heappush(open_heap, (ng + h(nb), ng, nb))
++
++    return None
++
++
++def _astar_path_wide_cached(
++    blocked_sig: int,
++    start: Tuple[int, int],
++    goal: Tuple[int, int],
++    blocked: set[Tuple[int, int]],
++    *,
++    width_m: float,
++) -> Optional[List[Tuple[int, int]]]:
++    """Wide-A* mit Cache: cache-key enthält width_m."""
++    width_key = int(round(float(width_m) * 1000.0))
++    key = ("wide", int(blocked_sig), int(width_key), tuple(start), tuple(goal))
++    val, hit = _cache_get(key)
++    if hit:
++        return val
++    val = _astar_path_wide(start, goal, blocked, width_m=width_m)
++    _cache_put(key, val)
++    return val
++
++
+ def _astar_path(start: Tuple[int, int], goal: Tuple[int, int], blocked: set[Tuple[int, int]]) -> Optional[List[Tuple[int, int]]]:
+     """Kürzester 4 Nachbar weg mit beachtung von Hindernissen und verwendung der Maschinen laufwege"""
+     if start == goal:
+@@ -1056,22 +1208,37 @@
+     *,
+     blocked: set[Tuple[int, int]],
+     blocked_sig: int,
++    width_m: float | None = None,
+ ) -> Tuple[Optional[List[Tuple[float, float]]], float, Optional[List[Tuple[int, int]]]]:
+     """Route on the grid from start_world to end_world.
+ 
+     Returns:
+         (polyline_world, length_m, path_cells)
+ 
+-    path_cells ist der A*-Zellenpfad (4er Nachbarschaft). Damit können wir z.B.
+-    Worker-Wege als flächige Clearance (Breite) markieren.
++    Wenn width_m gesetzt ist (>0), wird der A*-Weg *direkt* mit dieser Breite berechnet:
++    jedes Segment wird nur zugelassen, wenn der Korridor (Breite width_m) keine Blockaden schneidet.
+     """
+     s_cell = _cell_of_world(*start_world)
+     e_cell = _cell_of_world(*end_world)
+ 
+-    s_cell = _pick_free_cell_near(s_cell, blocked, max_radius=3)
+-    e_cell = _pick_free_cell_near(e_cell, blocked, max_radius=3)
+-
+-    cells = _astar_path_cached(blocked_sig, s_cell, e_cell, blocked)
++    wm = None
++    try:
++        wm = None if width_m is None else float(width_m)
++    except Exception:
++        wm = None
++
++    if wm is not None and wm > 0.0:
++        gs = float(config.GRID_SIZE) if float(config.GRID_SIZE) > 0 else 1.0
++        # Worker-Ports liegen oft direkt an Maschinen; Radius daher etwas großzügiger.
++        max_r = int(max(8, math.ceil((wm / gs) + 4)))
++        s_cell = _pick_free_cell_near_wide(s_cell, blocked, width_m=wm, max_radius=max_r)
++        e_cell = _pick_free_cell_near_wide(e_cell, blocked, width_m=wm, max_radius=max_r)
++        cells = _astar_path_wide_cached(blocked_sig, s_cell, e_cell, blocked, width_m=wm)
++    else:
++        s_cell = _pick_free_cell_near(s_cell, blocked, max_radius=3)
++        e_cell = _pick_free_cell_near(e_cell, blocked, max_radius=3)
++        cells = _astar_path_cached(blocked_sig, s_cell, e_cell, blocked)
++
+     if not cells:
+         return None, float("inf"), None
+ 
+@@ -1153,7 +1320,7 @@
+         if p1 is None or p2 is None:
+             continue
+ 
+-        pts, length_m, cells = route_world_to_world_cells(p1, p2, blocked=blocked, blocked_sig=blocked_sig)
++        pts, length_m, cells = route_world_to_world_cells(p1, p2, blocked=blocked, blocked_sig=blocked_sig, width_m=width_m)
+         clearance_cells = corridor_cells_for_path_cells(cells or [], width_m)
+         out["worker"].append(
+             {

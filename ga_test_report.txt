@@ -1,0 +1,99 @@
+
+================================================================================
+GA_TEST START
+================================================================================
+
+================================================================================
+EXCEL IMPORT
+================================================================================
+[OK] Excel file exists
+    xlsx=C:\Users\Carey\OneDrive\Bachelorarbeit\BA-Code\layouts_with_machines.xlsx
+[OK] apply_excel_layout_to_config executed
+    sheet=Test
+
+================================================================================
+CONFIG / ALIGNMENT
+================================================================================
+[OK] MACHINE_COUNT > 0
+    MACHINE_COUNT=7
+[OK] MACHINE_FIXED length == MACHINE_COUNT
+    len(MACHINE_FIXED)=7 MACHINE_COUNT=7
+[OK] MACHINE_PORTS length == MACHINE_COUNT
+    len=7
+[OK] MACHINE_PORTS elements are None|dict
+[OK] MACHINE_WORKERS length == MACHINE_COUNT
+    len=7
+[OK] MACHINE_WORKERS elements are None|dict
+[OK] MACHINE_WATER length == MACHINE_COUNT
+    len=7
+[OK] MACHINE_WATER elements are None|dict
+[OK] MACHINE_GAS length == MACHINE_COUNT
+    len=7
+[OK] MACHINE_GAS elements are None|dict
+[OK] MACHINE_OTHER length == MACHINE_COUNT
+    len=7
+[OK] MACHINE_OTHER elements are None|dict
+
+================================================================================
+FIXED MACHINES SEMANTICS
+================================================================================
+[OK] fixed indices detected
+    fixed_idxs=[3]
+[OK] MACHINE_FIXED entries valid
+
+================================================================================
+OPTIONAL POINTS (WORKER/WATER/GAS/OTHER)
+================================================================================
+[OK] Worker: None if missing, point if present
+[OK] Water: None if missing, point if present
+[OK] Gas: None if missing, point if present
+[OK] Other: None if missing, point if present
+
+================================================================================
+PLACEMENT / OVERLAP
+================================================================================
+[OK] clearance_pad_cells computed
+    pad_cells=1
+[FAIL] random_individual has no overlaps (incl. clearance)
+    overlap_cells=24
+
+================================================================================
+GA OPERATOR INVARIANCE (FIXED MUST NOT MOVE)
+================================================================================
+[OK] baseline fixed matches
+    [baseline(a)] alle fixed Maschinen korrekt
+[OK] uniform_crossover keeps fixed
+    [after uniform_crossover] alle fixed Maschinen korrekt
+[OK] mutate keeps fixed
+    [after mutate] alle fixed Maschinen korrekt
+[OK] tauschen keeps fixed
+    [after tauschen] alle fixed Maschinen korrekt
+
+================================================================================
+GA SMOKE RUN
+================================================================================
+[OK] run_ga returns best_ind
+    best_score=1234.5
+[OK] best_ind keeps fixed
+    [best_ind] alle fixed Maschinen korrekt
+
+================================================================================
+UI_CANVAS STATIC (NO IMPORT) — MOVE/SWAP/ROTATE WRITES
+================================================================================
+[OK] ui_canvas.py readable
+    path=C:\Users\Carey\OneDrive\Bachelorarbeit\BA-Code\GA_10.02.2026\ui_canvas.py
+[OK] ui_canvas '_bewegen': fixed-guard before writes
+    definitions_total=1 write_defs=1
+    def#1: guard+return before first write (pattern=\["gx"\]\s*=)
+[OK] ui_canvas '_rotate_clockwise': fixed-guard before writes
+    definitions_total=1 write_defs=1
+    def#1: guard+return before first write (pattern=\["z"\]\s*=)
+[OK] ui_canvas '_tauschen': fixed-guard before writes
+    definitions_total=1 write_defs=1
+    def#1: guard+return before first write (pattern=\["gx"\]\s*=)
+[OK] ui_canvas functions checked (write-affecting only, mousePressEvent excluded)
+    checked=3 failed=0
+
+--------------------------------------------------------------------------------
+SUMMARY: 32 OK / 1 FAIL | elapsed=7.51s
+--------------------------------------------------------------------------------

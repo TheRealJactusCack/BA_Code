@@ -1,0 +1,17 @@
+--- a/ga_engine.py
++++ b/ga_engine.py
+@@ -247,11 +247,13 @@
+             changed = True
+ 
+         if random.random() < rot_prob:
+-            new_z = int(new_z + 90 * random.choice([1, 2, 3]))
++            new_z = int(new_z + 90 * random.choice([1, 2, 3])) % 360
+             changed = True
+ 
+         if not changed:
+             continue
++
++        new_z = int(new_z) % 360
+ 
+         w_eff, h_eff = effective_dims(m, new_z)
+         max_col = max(0, int(config.GRID_COLS) - int(w_eff))
