@@ -315,24 +315,7 @@ def run_ga(generations: int, progress_callback=None) -> Tuple[Optional[List[Dict
         GroupsForGA = Optimize_Groups(BestIndCopy)
         config.GROUPS_FOR_GA = GroupsForGA
 
-        # ===================================================================== DEBUG=====================================
-        from helpers import assert_group_offsets_valid
-        if getattr(config, "DEBUG_GROUP_ASSERT", False):
-            # Prüft: stimmen die gespeicherten Offsets auf dem Referenz-Layout (BestIndCopy)?
-            assert_group_offsets_valid(config.GROUPS_FOR_GA, BestIndCopy, check_expected_member=True, raise_on_fail=True)
-        # ===================================================================== DEBUG=====================================
-
         group_pop = init_group_population()
-
-        # ===================================================================== DEBUG=====================================
-        if getattr(config, "DEBUG_GROUP_ASSERT", False):
-            # nur ein paar Individuen prüfen, sonst langsam
-            for k in range(min(3, len(group_pop))):
-                ok = assert_group_offsets_valid(config.GROUPS_FOR_GA, group_pop[k], check_expected_member=True)
-                if not ok:
-                    print(f"[DEBUG] group_pop[{k}] ist direkt nach init_group_population() kaputt.")
-                    break
-        # ===================================================================== DEBUG=====================================
 
         best_ind = None
         best_score = float("inf")
@@ -353,12 +336,6 @@ def run_ga(generations: int, progress_callback=None) -> Tuple[Optional[List[Dict
 
             EliteKeep = int(config.ELITE_KEEP)
             elites = [copy.deepcopy(p[1]) for p in paired[:EliteKeep]]
-
-            # ===================================================================== DEBUG=====================================
-            if getattr(config, "DEBUG_GROUP_ASSERT", False) and elites:
-                assert_group_offsets_valid(config.GROUPS_FOR_GA, elites[0], check_expected_member=True)
-            # ===================================================================== DEBUG=====================================
-
             elite_scores = [p[0] for p in paired[:EliteKeep]]
 
             SwapStateBestThisGen = bool(paired[0][2]) if paired else False
@@ -377,25 +354,9 @@ def run_ga(generations: int, progress_callback=None) -> Tuple[Optional[List[Dict
                 p1 = random.choice(elites)
                 p2 = random.choice(elites)
                 child = uniform_crossover(p1, p2)
-
-                if getattr(config, "DEBUG_GROUP_ASSERT", False):
-                    assert_group_offsets_valid(config.GROUPS_FOR_GA, child, check_expected_member=True)
-
                 mutate(child)
-
-                if getattr(config, "DEBUG_GROUP_ASSERT", False):
-                    assert_group_offsets_valid(config.GROUPS_FOR_GA, child, check_expected_member=True)
-
                 enforce_fixed(child)
-
-                if getattr(config, "DEBUG_GROUP_ASSERT", False):
-                    assert_group_offsets_valid(config.GROUPS_FOR_GA, child, check_expected_member=True)
-
                 SwapsHappened = bool(tauschen(child, float(config.SWAP_PROB)))
-
-                if getattr(config, "DEBUG_GROUP_ASSERT", False):
-                    assert_group_offsets_valid(config.GROUPS_FOR_GA, child, check_expected_member=True)
-
                 new_pop.append(child)
                 NewSwaps.append(SwapsHappened)
 

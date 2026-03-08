@@ -11,7 +11,6 @@ from openpyxl import load_workbook
 import config
 from helpers import update_grid_counts, port_world_xy
 
-
 @dataclass(frozen=True)
 class Wall:
     x1: float
@@ -105,7 +104,6 @@ def _s(v: Any) -> str:
     except (ValueError, TypeError):
         return ""
 
-
 def _truthy(v: Any) -> bool:
     if v is None:
         return False
@@ -182,7 +180,6 @@ def _walls_to_polygon(walls_xy: List[Tuple[Tuple[float, float], Tuple[float, flo
 
     return None
 
-
 def _point_on_segment(px: float, py: float, ax: float, ay: float, bx: float, by: float, eps: float = 1e-9) -> bool:
     #Kollinearität + Bounding-Box (robust genug für Grid-Center)
     vx, vy = bx - ax, by - ay
@@ -197,7 +194,6 @@ def _point_on_segment(px: float, py: float, ax: float, ay: float, bx: float, by:
     if dot - vv > eps:
         return False
     return True
-
 
 def _point_in_polygon(px: float, py: float, poly: List[Tuple[float, float]]) -> bool:
     """
@@ -219,7 +215,6 @@ def _point_in_polygon(px: float, py: float, poly: List[Tuple[float, float]]) -> 
             if x_int >= px:
                 inside = not inside
     return inside
-
 
 def _outside_cells_from_walls(to_internal_xy, walls: List[Wall]) -> set[Tuple[int, int]]:
     """
@@ -246,7 +241,6 @@ def _outside_cells_from_walls(to_internal_xy, walls: List[Wall]) -> set[Tuple[in
                 out.add((col, row))
     return out
 
-
 def _point_in_rotated_rect(px: float, py: float, cx: float, cy: float, w: float, h: float, rot_deg: float) -> bool:
     a = math.radians(float(rot_deg))
     ca = math.cos(-a)
@@ -256,7 +250,6 @@ def _point_in_rotated_rect(px: float, py: float, cx: float, cy: float, w: float,
     lx = dx * ca - dy * sa
     ly = dx * sa + dy * ca
     return (abs(lx) <= w / 2.0 + 1e-9) and (abs(ly) <= h / 2.0 + 1e-9)
-
 
 def _cells_for_rotated_rect(cx: float, cy: float, w: float, h: float, rot_deg: float) -> set[Tuple[int, int]]:
     a = math.radians(float(rot_deg))
@@ -289,7 +282,6 @@ def _cells_for_rotated_rect(cx: float, cy: float, w: float, h: float, rot_deg: f
             if _point_in_rotated_rect(px, py, cx, cy, w, h, rot_deg):
                 out.add((col, row))
     return out
-
 
 def read_layout_from_sheet(
     xlsx_path: str, sheet_name: str
@@ -380,7 +372,6 @@ def read_layout_from_sheet(
                 raise ValueError(f"Output benötigt input bei Zeile {r}")
             outputs.append(Output(id=oid, x=float(x), y=float(y), input=input_machine, gewicht = gewicht_raw))
             #print(f"Output {oid} bei ({x:.2f}, {y:.2f})")
-
 
         elif t == "column":
             x = _f(ws.cell(r, idx("x") or 0).value)

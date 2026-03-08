@@ -1,0 +1,20 @@
+# Python Cache
+__pycache__/
+*.pyc
+*.pyo
+
+# temporäre Dateien
+*.tmp
+*.log
+
+# Excel Dateien
+*.xlsx
+
+# ZIP
+*.zip
+
+# VS Code
+.vscode/
+
+# Windows
+Thumbs.db

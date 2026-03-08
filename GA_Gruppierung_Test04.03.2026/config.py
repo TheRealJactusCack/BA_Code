@@ -71,5 +71,3 @@ CREATE_GROUPS = True
 GROUPS_FOR_GA = []
 GROUP_PHASE = False
 GROUP_BY = "Manhatten" # aktuell: Worker, Manhatten möglich
-
-DEBUG_GROUP_ASSERT = False

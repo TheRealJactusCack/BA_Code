@@ -251,12 +251,9 @@ def Optimize_Groups(BestIndCopy: List[Dict]) -> List[Dict]:
                     continue
         # ===================================== Feste Maschine nur rotieren ==================================
 
-        # print("copy ", TestMachineCopy["gx"], TestMachineCopy["gy"], TestMachineCopy["z"])
-        # print("ind  ", BestIndCopy[MachineTest]["gx"], BestIndCopy[MachineTest]["gy"], BestIndCopy[MachineTest]["z"])
         BestIndCopy[MachineTest] = TestMachineCopy  # commit
         BestIndCopy[MachineFixed] = FixedMachine
         # ... hillclimb ...
-        # print("ind' ", BestIndCopy[MachineTest]["gx"], BestIndCopy[MachineTest]["gy"], BestIndCopy[MachineTest]["z"])
 
         LeaderZ = FixedMachine["z"]
         LeaderMemberX = TestMachineCopy["gx"] - FixedMachine["gx"]
@@ -848,12 +845,10 @@ def _cell_of_world(x: float, y: float) -> Tuple[int, int]:
     row = max(0, min(int(config.GRID_ROWS) - 1, row))
     return col, row
 
-
 def _world_of_cell_center(col: int, row: int) -> Tuple[float, float]:
     """Center of a grid cell in world meters."""
     gs = float(config.GRID_SIZE) if float(config.GRID_SIZE) > 0 else 1.0
     return (float(col) + 0.5) * gs, (float(row) + 0.5) * gs
-
 
 def _neighbors4(col: int, row: int) -> List[Tuple[int, int]]:
     out: List[Tuple[int, int]] = []
@@ -875,9 +870,7 @@ def _blocked_signature(blocked: set[Tuple[int, int]]) -> int:
         h.update(int(r).to_bytes(4, "little", signed=True))
     return int.from_bytes(h.digest(), "little", signed=False)
 
-
 _ROUTE_CACHE: "OrderedDict[Tuple[int, Tuple[int,int], Tuple[int,int]], Optional[List[Tuple[int,int]]]]" = OrderedDict()
-
 
 def _cache_get(key):
     try:
@@ -1378,157 +1371,3 @@ def distance_cost(ind: List[Dict], config: any) -> float:
         cost += no_path_penalty if not math.isfinite(length) else length * config.OTHER_WEIGHT
 
     return float(cost)
-
-
-def assert_group_offsets_valid(
-    groups: List[Dict],
-    ind: List[Dict],
-    *,
-    check_expected_member: bool = True,
-    max_cells_to_print: int = 25,
-    raise_on_fail: bool = False,
-) -> bool:
-    """
-    Debug: Prüft pro Gruppe, ob Leader/Member (inkl. Worker-Clearance) kollidieren.
-
-    Loggt:
-      - Body↔Body Overlap (Maschinen-Fußabdruck)
-      - LeaderClearance↔MemberBody
-      - MemberClearance↔LeaderBody
-      - Clearance↔Clearance
-      - optional: Abweichung zwischen 'expected member' (aus Local/LeaderZ) und aktuellem ind[member]
-
-    Rückgabe:
-      True wenn keine Clearance/Body-Kollision innerhalb einer Gruppe gefunden wurde.
-    """
-    machine_count = int(getattr(config, "MACHINE_COUNT", len(ind)))
-
-    aligned: List[Optional[Dict]] = [None] * machine_count
-    for m in ind:
-        try:
-            mi = int(m.get("idx", -1))
-        except Exception:
-            continue
-        if 0 <= mi < machine_count:
-            aligned[mi] = m
-
-    if any(x is None for x in aligned):
-        aligned = list(ind)  # fallback, falls Reihenfolge/idx nicht sauber ist
-
-    def _slice_cells(cells: Set[Tuple[int, int]]) -> List[Tuple[int, int]]:
-        cells_list = sorted(cells)
-        return cells_list[: max(0, int(max_cells_to_print))]
-
-    any_problem = False
-
-    for group in (groups or []):
-        leader_idx = int(group.get("Leader", -1))
-        members = [int(x) for x in (group.get("Member", []) or [])]
-
-        if leader_idx < 0 or leader_idx >= len(aligned):
-            continue
-        if not members or leader_idx not in members:
-            continue
-
-        leader = aligned[leader_idx]
-        if leader is None:
-            continue
-
-        leader_body = occupied_cells(leader, Clearance=False)
-        leader_clear = get_worker_clearance(leader)
-        leader_all = leader_body | leader_clear
-
-        group_leader_z = int(group.get("LeaderZ", leader.get("z", 0)))
-
-        for member_idx in members:
-            if member_idx == leader_idx:
-                continue
-            if member_idx < 0 or member_idx >= len(aligned):
-                continue
-
-            member_actual = aligned[member_idx]
-            if member_actual is None:
-                continue
-
-            member_body = occupied_cells(member_actual, Clearance=False)
-            member_clear = get_worker_clearance(member_actual)
-            member_all = member_body | member_clear
-
-            # Klassifizieren
-            overlap_body_body = leader_body & member_body
-            overlap_lc_mb = leader_clear & member_body
-            overlap_mc_lb = member_clear & leader_body
-            overlap_clear_clear = leader_clear & member_clear
-
-            # Optional: "expected member" aus Local (so wie enforce ihn bauen würde)
-            expected_member = None
-            expected_body = set()
-            expected_clear = set()
-            expected_all = set()
-            expected_mismatch = None
-
-            if check_expected_member:
-                try:
-                    # wenn du MemberDict schon auf 3-Args erweitert hast:
-                    expected_member = MemberDict(group, aligned, member_idx)  # type: ignore[arg-type]
-                except TypeError:
-                    # fallback auf alte Signatur (2er-Gruppen)
-                    expected_member = MemberDict(group, aligned)  # type: ignore[misc]
-                except Exception as e:
-                    expected_member = None
-                    expected_mismatch = f"MemberDict failed: {e!r}"
-
-            if expected_member is not None:
-                expected_body = occupied_cells(expected_member, Clearance=False)
-                expected_clear = get_worker_clearance(expected_member)
-                expected_all = expected_body | expected_clear
-
-                expected_mismatch = {
-                    "actual": (int(member_actual.get("gx", 0)), int(member_actual.get("gy", 0)), int(member_actual.get("z", 0))),
-                    "expected": (int(expected_member.get("gx", 0)), int(expected_member.get("gy", 0)), int(expected_member.get("z", 0))),
-                }
-
-                # Wenn du erwartest, dass member immer enforced ist:
-                # mismatch zeigt dir sofort: irgendwer verschiebt/clamp't den Member (normalize_individual!)
-                overlap_body_body = leader_body & expected_body
-                overlap_lc_mb = leader_clear & expected_body
-                overlap_mc_lb = expected_clear & leader_body
-                overlap_clear_clear = leader_clear & expected_clear
-
-            has_overlap = bool(overlap_body_body or overlap_lc_mb or overlap_mc_lb or overlap_clear_clear)
-            if not has_overlap:
-                continue
-
-            any_problem = True
-
-            # Hilfsinfos zu Offset/Rotation
-            local = (group.get("Local", {}) or {}).get(member_idx, {}) if isinstance(group.get("Local", {}), dict) else {}
-            stored_dx = local.get("MemberX", None)
-            stored_dy = local.get("MemberY", None)
-            stored_dz = local.get("MemberZ", None)
-
-            leader_z_now = int(leader.get("z", 0))
-            leader_z_diff = (leader_z_now - group_leader_z) % 360
-
-            print("=" * 100)
-            print("[GROUP OFFSET INVALID] Leader/Member Clearance-Kollision")
-            print(f"Group: leader={leader_idx} member={member_idx} members={members}")
-            print(f"Leader: gx={int(leader.get('gx', 0))} gy={int(leader.get('gy', 0))} z={leader_z_now} (GroupLeaderZ={group_leader_z}, diff={leader_z_diff})")
-            print(f"Local(stored): dx={stored_dx} dy={stored_dy} dz={stored_dz}")
-
-            if expected_mismatch is not None:
-                print(f"Member(actual vs expected): {expected_mismatch}")
-
-            if overlap_body_body:
-                print(f"- BODY∩BODY: {len(overlap_body_body)} cells  sample={_slice_cells(overlap_body_body)}")
-            if overlap_lc_mb:
-                print(f"- LeaderClearance∩MemberBody: {len(overlap_lc_mb)} cells  sample={_slice_cells(overlap_lc_mb)}")
-            if overlap_mc_lb:
-                print(f"- MemberClearance∩LeaderBody: {len(overlap_mc_lb)} cells  sample={_slice_cells(overlap_mc_lb)}")
-            if overlap_clear_clear:
-                print(f"- Clearance∩Clearance: {len(overlap_clear_clear)} cells  sample={_slice_cells(overlap_clear_clear)}")
-
-    if any_problem and raise_on_fail:
-        raise AssertionError("Group leader/member clearance overlap detected. See logs above.")
-
-    return not any_problem
