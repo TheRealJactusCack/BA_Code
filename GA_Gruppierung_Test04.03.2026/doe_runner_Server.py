@@ -187,6 +187,7 @@ def main() -> int:
     layout_xlsx = here / "layouts_with_machines.xlsx"
     out_xlsx = here / "Auswertung.xlsx"
     sheet_name = "Ideal_komplex"
+    config.GRID_SIZE = 0.5
 
     # Layout aus Excel in config übernehmen
     apply_excel_layout_to_config(str(layout_xlsx), sheet_name=sheet_name)
