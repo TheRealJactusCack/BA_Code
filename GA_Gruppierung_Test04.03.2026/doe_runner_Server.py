@@ -186,7 +186,7 @@ def main() -> int:
     here = Path(__file__).resolve().parent
     layout_xlsx = here / "layouts_with_machines.xlsx"
     out_xlsx = here / "Auswertung.xlsx"
-    sheet_name = "Test"
+    sheet_name = "Ideal_komplex"
 
     # Layout aus Excel in config übernehmen
     apply_excel_layout_to_config(str(layout_xlsx), sheet_name=sheet_name)
