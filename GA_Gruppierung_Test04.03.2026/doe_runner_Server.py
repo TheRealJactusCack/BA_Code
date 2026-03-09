@@ -200,7 +200,6 @@ def main() -> int:
         DOEParam(key = "MUTATION_PROB", start = 0.1, stop = 0.4, steps = 4, kind = "float"),
         DOEParam(key = "MUTATION_POS_STD", start = 1.0, stop = 4.0, steps = 4, kind = "float"),
         DOEParam(key = "MUTATION_ROT_PROB", start = 0.1, stop = 0.4, steps = 4, kind = "float"),
-        DOEParam(key = "ELITE_KEEP", start = 10, stop = 25, steps = 2, kind = "int"),
     ]
 
     # Alle Designpunkte erzeugen (Full-Factorial)

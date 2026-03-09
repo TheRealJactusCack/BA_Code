@@ -163,22 +163,29 @@ class LayoutCanvas(QWidget):
         if 0 <= idx < len(fixed_list) and fixed_list[idx] is not None:
             return float("nan") # feste Maschine, keine Rotation
 
-        cx = float(m.get("x", 0.0))
-        cy = float(m.get("y", 0.0))
+        def round_half_up(x: float) -> int:
+            return int(math.floor(x + 0.5)) if x >= 0 else int(math.ceil(x - 0.5))
+        old_z = int(m.get("z", 0)) % 360
+        old_w, old_h = effective_dims(m, old_z)
 
-        new_z = (int(m.get("z", 0)) + 90) % 360
+        new_z = (old_z + 90) % 360
         w_eff, h_eff = effective_dims(m, new_z)
+        center_x = float(int(m.get("gx", 0))) + (float(old_w) /2.0)
+        center_y = float(int(m.get("gy", 0))) + (float(old_h) /2.0)
+        
+        new_gx = round_half_up(center_x - (float(w_eff) / 2.0))
+        new_gy = round_half_up(center_y - (float(h_eff) / 2.0))
 
-        gs = float(config.GRID_SIZE) if float(config.GRID_SIZE) > 0 else 1.0
-        gx = int(round((cx / gs) - (float(w_eff) / 2.0)))
-        gy = int(round((cy / gs) - (float(h_eff) / 2.0)))
+        # clamp nur für diese Maschine
+        max_col = max(0, int(config.GRID_COLS) - int(w_eff))
+        max_row = max(0, int(config.GRID_ROWS) - int(h_eff))
+        new_gx = max(0, min(max_col, new_gx))
+        new_gy = max(0, min(max_row, new_gy))
 
         m["z"] = int(new_z)
-        m["gx"] = int(gx)
-        m["gy"] = int(gy)
-        m["x"], m["y"] = cell_center_from_topleft(int(gx), int(gy), int(w_eff), int(h_eff))
-
-        normalize_individual(self.layout_data)
+        m["gx"] = int(new_gx)
+        m["gy"] = int(new_gy)
+        m["x"], m["y"] = cell_center_from_topleft(int(new_gx), int(new_gy), int(w_eff), int(h_eff))
         self._routed_cache = None
 
         from ga_engine import fitness

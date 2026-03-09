@@ -6,7 +6,7 @@ MACHINE_COUNT = 10
 FLOOR_W = 20.0
 FLOOR_H = 15.0      
 
-GRID_SIZE = 0.25
+GRID_SIZE = 0.2
 
 MACHINE_SIZES = [(1.0, 1.0) for _ in range(MACHINE_COUNT)]
 

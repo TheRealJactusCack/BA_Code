@@ -332,17 +332,21 @@ def get_worker_clearance(m: Dict) -> set[Tuple[int, int]]:
     clearance: set[Tuple[int, int]] = set()
     if worker_point is None:
         return clearance
-    col = int(worker_point[0] / config.GRID_SIZE)
-    row = int(worker_point[1] / config.GRID_SIZE)
+    col = int(round(worker_point[0] / config.GRID_SIZE))
+    row = int(round(worker_point[1] / config.GRID_SIZE))
     side_raw = ((getattr(config, "MACHINE_WORKERS", []) or [None])[int(m.get("idx", -1))] or {}).get("side_worker") if 0 <= int(m.get("idx", -1)) < len(getattr(config, "MACHINE_WORKERS", []) or []) else None
     side = str(side_raw).strip().lower()
     actual_side = _rotated_side(side, rotation)
-    
+    # print(on_x_line, on_y_line)
+
     OneMeterInGrid = int(round(1 / config.GRID_SIZE))
-    half = OneMeterInGrid // 2
+    half = int(math.ceil(OneMeterInGrid / 2))
     if actual_side == "left":
         x_top_left = col - OneMeterInGrid
-        y_top_left = row - half
+        if config.GRID_SIZE == 1.0:
+            y_top_left = row
+        else: 
+            y_top_left = row - half
     elif actual_side == "top":
         x_top_left = col - half
         y_top_left = row - OneMeterInGrid
@@ -350,7 +354,10 @@ def get_worker_clearance(m: Dict) -> set[Tuple[int, int]]:
         x_top_left = col
         y_top_left = row - half
     elif actual_side == "bottom":
-        x_top_left = col - half
+        if config.GRID_SIZE == 1.0:
+            x_top_left = col
+        else: 
+            x_top_left = col - half
         y_top_left = row
     else:
         print("funktioniert nicht du lappen (Zeile 524 in helpers)")
@@ -368,14 +375,17 @@ def get_material_clearance(m: Dict, port_point, port_side_raw) -> set[Tuple[int,
     material_clearance: set[Tuple[int, int]] = set()
     if port_point is None:
         return material_clearance
-    port_col = int(port_point[0] / config.GRID_SIZE)
-    port_row = int(port_point[1] / config.GRID_SIZE)
+    port_col = int(round(port_point[0] / config.GRID_SIZE))
+    port_row = int(round(port_point[1] / config.GRID_SIZE))
     port_side = str(port_side_raw).strip().lower()
     actual_side = _rotated_side(port_side, rotation)
     
     if actual_side == "left":
         port_col -= 1
     elif actual_side == "top":
+        port_col -= 1
+        port_row -= 1
+    elif actual_side == "right":
         port_row -= 1
     if 0 <= port_col < config.GRID_COLS and 0 <= port_row < config.GRID_ROWS:
         material_clearance.add((port_col, port_row))
@@ -613,7 +623,6 @@ def random_Group_Leader() -> List[Dict]:
         MemberMachine = MemberDict(Group, ind)
         MemberIndex = Group["Member"][1]
         ind[MemberIndex] = MemberMachine
-        #
     normalize_individual(ind)
     return ind
 
@@ -646,28 +655,33 @@ def port_world_xy(
     if rot not in (0, 90, 180, 270):
         raise ValueError(f"Rotation {rotation_deg} ist nicht erlaubt. Nur 0, 90, 180 oder 270")
 
-    w0 = float(w_m)
-    d0 = float(d_m)
-    off = float(offset_m)
+    w0 = w_m
+    d0 = d_m
+    off = offset_m
 
     if side_n in {"left", "right"}:
         if off < 0.0 or off > d0:
             raise ValueError(f"Offset {off} ist außerhalb 0 bis {d0} für side {side}")
-        y_local = (d0 / 2.0) - off
-        x_local = (-w0 / 2.0) if side_n == "left" else (w0 / 2.0)
+        y_local = round(round((d0 / 2), 2) - off , 2)
+        x_local = round((-w0 / 2), 2) if side_n == "left" else round((w0 / 2), 2)
     else:
         if off < 0.0 or off > w0:
             raise ValueError(f"Offset {off} ist außerhalb 0 bis {w0} für side {side}")
-        x_local = (-w0 / 2.0) + off
-        y_local = (-d0 / 2.0) if side_n == "top" else (d0 / 2.0)
+        x_local = round(round((-w0 / 2), 2) + off, 2)
+        y_local = round((-d0 / 2), 2) if side_n == "top" else round((d0 / 2), 2)
 
-    a = math.radians(rot)
-    ca = math.cos(a)
-    sa = math.sin(a)
-    x_rot = x_local * ca - y_local * sa
-    y_rot = x_local * sa + y_local * ca
-
-    return center_x + x_rot, center_y + y_rot
+    # Exakte Rotation die auf sin und cos verzichtet:
+    if rot == 0:
+        x_rot, y_rot = x_local, y_local
+    elif rot == 90:
+        x_rot, y_rot = -y_local, x_local
+    elif rot == 180:
+        x_rot, y_rot = -x_local, -y_local
+    elif rot == 270:
+        x_rot, y_rot = y_local, -x_local
+    else:
+        raise ValueError(f"Rotation: {rotation_deg} ist nicht erlaubt")
+    return round(center_x + x_rot, 2), round(center_y + y_rot, 2)
 
 def _rotated_side(side: str, rotation_deg: int) -> str:
     side_n = _parse_side(side)
@@ -824,7 +838,6 @@ def machine_port_point(m: Dict, kind: str) -> Tuple[float, float]:
         offset_m=float(offset),
         rotation_deg=int(m.get("z", 0)),
     )
-
 
 def machine_input_point(m: Dict) -> Tuple[float, float]:
     return machine_port_point(m, "in")

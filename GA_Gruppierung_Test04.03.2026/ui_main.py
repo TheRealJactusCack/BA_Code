@@ -301,14 +301,8 @@ class MainWindow(QWidget):
 
     # Lädt Excel-Daten ins config (Maschinen, Ports, Obstacles, Entry/Exit, Connections) und refresht UI
     def _apply_excel(self, path: str, sheet: str):
-        try:
-            apply_excel_layout_to_config(path, sheet_name=sheet)
-            self.layout_loaded = True
-        except Exception as e:
-            self.layout_loaded = False
-            print("ui_main: 295")
-            QMessageBox.warning(self, "Excel Parse Fehler", str(e))
-            return
+        apply_excel_layout_to_config(path, sheet_name=sheet)
+        self.layout_loaded = True
         self.machine_info_label.setText(f"Maschinen {config.MACHINE_COUNT}")
         self.status_label.setText(
             f"Layout geladen {sheet} Floor {config.FLOOR_W:.2f} x {config.FLOOR_H:.2f} "
