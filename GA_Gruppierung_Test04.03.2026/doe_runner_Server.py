@@ -194,8 +194,6 @@ def main() -> int:
 
     # DOE-Parameter hier festlegen (statt UI)
     params: List[DOEParam] = [
-        DOEParam(key = "POPULATION_SIZE", start = 10, stop = 50, steps = 2, kind = "int"),
-        DOEParam(key = "GENERATIONS", start = 5, stop = 200, steps = 4, kind = "int"),
         DOEParam(key = "SWAP_PROP", start = 0.1, stop = 0.4, steps = 4, kind = "float"),
         DOEParam(key = "MUTATION_PROB", start = 0.1, stop = 0.4, steps = 4, kind = "float"),
         DOEParam(key = "MUTATION_POS_STD", start = 1, stop = 4, steps = 4, kind = "int"),

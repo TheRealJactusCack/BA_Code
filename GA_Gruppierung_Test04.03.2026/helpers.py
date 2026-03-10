@@ -289,23 +289,6 @@ def update_grid_counts() -> None:
         print("helpers: 34")
         config.EXIT_CELL = (config.GRID_COLS - 1, config.GRID_ROWS - 1)
 
-
-def rect_corners(center: Tuple[float, float], w: float, h: float, angle_deg: int) -> List[Tuple[float, float]]:
-    """Vier Eckpunkte eines Rechtecks mit Rotation um center."""
-    cx, cy = center
-    a = math.radians(int(angle_deg) % 360)
-    dx = w / 2.0
-    dy = h / 2.0
-    pts = [(-dx, -dy), (dx, -dy), (dx, dy), (-dx, dy)]
-    ca = math.cos(a)
-    sa = math.sin(a)
-    out = []
-    for x, y in pts:
-        rx = x * ca - y * sa + cx
-        ry = x * sa + y * ca + cy
-        out.append((rx, ry))
-    return out
-
 def cell_center_from_topleft(col: int, row: int, w_cells: int, h_cells: int) -> Tuple[float, float]:
     """Zentrum in Metern für eine Maschine deren Top Left Zelle col row ist."""
     x = (col + w_cells / 2.0) * config.GRID_SIZE
@@ -720,118 +703,50 @@ def _rotated_side(side: str, rotation_deg: int) -> str:
 #=============================================================================================
 #=========================0= Anfang der Port berechnung ======================================
 #5 Funktionen für 6 Ports (dumm und entstanden durch das nacheinander hinzufügen der Ports) ==
+def machine_optional_point(
+    m: Dict,
+    *,
+    point_type: str,
+    side_key: str,
+    offset_key: str,
+    ) -> Optional[Tuple[float, float]]:
+    idx = int(m.get("idx", 0))
+    machine_width, machine_height = config.MACHINE_SIZES[idx]
+
+    type = getattr(config, point_type, [])
+    point = type[idx] if idx < len(type) else None
+    if not point:
+        return None
+    
+    side_raw = point.get(side_key, None)
+    offset_raw = point.get(offset_key, None)
+
+    if side_raw in (None, "") or offset_raw is None:
+        return None
+    
+    side = str(side_raw).strip().lower()
+    offset = float(offset_raw)
+    return port_world_xy(
+        center_x = float(m["x"]),
+        center_y = float(m["y"]),
+        w_m = float(machine_width),
+        d_m = float(machine_height),
+        side = side,
+        offset_m = offset,
+        rotation_deg = int(m.get("z", 0)),  
+    )
 
 def machine_water_point(m: Dict) -> Optional[Tuple[float, float]]:
-    """Weltkoordinate des Wasseranschlusses einer Maschine. None, wenn kein Wasseranschluss existiert (Damit keine Fehler wegen paralellen Listen entstehen)"""
-    idx = int(m.get("idx", 0))
-    w_m, d_m = config.MACHINE_SIZES[idx]
-
-    water = getattr(config, "MACHINE_WATER", [])
-    wd = water[idx] if idx < len(water) else None
-    if not wd:
-        return None
-
-    side_raw = wd.get("side_water", None)
-    off_raw = wd.get("offset_water", None)
-    if side_raw in (None, "") or off_raw is None:
-        return None
-
-    side = str(side_raw).strip().lower()
-    offset = float(off_raw)
-
-    return port_world_xy(
-        center_x=float(m["x"]),
-        center_y=float(m["y"]),
-        w_m=float(w_m),
-        d_m=float(d_m),
-        side=side,
-        offset_m=offset,
-        rotation_deg=int(m.get("z", 0)),
-    )
+    return machine_optional_point(m, point_type= "MACHINE_WATER", side_key = "side_water", offset_key = "offset_water")
 
 def machine_gas_point(m: Dict) -> Optional[Tuple[float, float]]:
-    """Weltkoordinate des Gasanschlusses einer Maschine. None, wenn kein Gasanschluss existiert (Damit keine Fehler wegen paralellen Listen entstehen)"""
-    idx = int(m.get("idx", 0))
-    w_m, d_m = config.MACHINE_SIZES[idx]
-
-    gas = getattr(config, "MACHINE_GAS", [])
-    wd = gas[idx] if idx < len(gas) else None
-    if not wd:
-        return None
-
-    side_raw = wd.get("side_gas", None)
-    off_raw = wd.get("offset_gas", None)
-    if side_raw in (None, "") or off_raw is None:
-        return None
-
-    side = str(side_raw).strip().lower()
-    offset = float(off_raw)
-
-    return port_world_xy(
-        center_x=float(m["x"]),
-        center_y=float(m["y"]),
-        w_m=float(w_m),
-        d_m=float(d_m),
-        side=side,
-        offset_m=offset,
-        rotation_deg=int(m.get("z", 0)),
-    )
+    return machine_optional_point(m, point_type= "MACHINE_GAS", side_key = "side_gas", offset_key = "offset_gas")
 
 def machine_other_point(m: Dict) -> Optional[Tuple[float, float]]:
-    """Weltkoordinate der zusätzlichen Anschlüsse einer Maschine. None, wenn kein Anschluss existiert (Damit keine Fehler wegen paralellen Listen entstehen)"""
-    idx = int(m.get("idx", 0))
-    w_m, d_m = config.MACHINE_SIZES[idx]
-
-    other = getattr(config, "MACHINE_OTHER", [])
-    wd = other[idx] if idx < len(other) else None
-    if not wd:
-        return None
-
-    side_raw = wd.get("side_other", None)
-    off_raw = wd.get("offset_other", None)
-    if side_raw in (None, "") or off_raw is None:
-        return None
-
-    side = str(side_raw).strip().lower()
-    offset = float(off_raw)
-
-    return port_world_xy(
-        center_x=float(m["x"]),
-        center_y=float(m["y"]),
-        w_m=float(w_m),
-        d_m=float(d_m),
-        side=side,
-        offset_m=offset,
-        rotation_deg=int(m.get("z", 0)),
-    )
+    return machine_optional_point(m, point_type= "MACHINE_OTHER", side_key = "side_other", offset_key = "offset_other")
 
 def machine_worker_point(m: Dict) -> Optional[Tuple[float, float]]:
-    """Weltkoordinate der Arbeiterstation einer Maschine. None, wenn kein Worker existiert (genau wie bei anschlüssen zum vermeiden von Fehlern wegen paralellen Listen)"""
-    idx = int(m.get("idx", 0))
-    w_m, d_m = config.MACHINE_SIZES[idx]
-
-    workers = getattr(config, "MACHINE_WORKERS", [])
-    wd = workers[idx] if idx < len(workers) else None
-    if not wd:
-        return None
-
-    side_raw = wd.get("side_worker", None)
-    off_raw = wd.get("offset_worker", None)
-    if side_raw in (None, "") or off_raw is None:
-        return None
-
-    side = str(side_raw).strip().lower()
-    offset = float(off_raw)
-
-    return port_world_xy(
-        center_x=float(m["x"]),
-        center_y=float(m["y"]),
-        w_m=float(w_m),
-        d_m=float(d_m),
-        side=side,
-        offset_m=offset,
-        rotation_deg=int(m.get("z", 0)),
-    )
+    return machine_optional_point(m, point_type= "MACHINE_WORKERS", side_key = "side_worker", offset_key = "offset_worker")
 
 def machine_port_point(m: Dict, kind: str) -> Tuple[float, float]:
     """Weltkoordinate des Ports einer Maschine."""
@@ -1159,10 +1074,9 @@ def route_line_to_world(
 
     #Sonderfall: A und B sind identisch (keine Linie, nur ein Punkt)
     if denom == 0:
-        dx = machine_world[0] - start_world[0]
-        dy = machine_world[1] - start_world[1]
-        d = math.sqrt(dx * dx + dy * dy)
-        return (d, start_world)
+        pts = [start_world, end_world]
+        distance = math.dist(start_world, end_world)
+        return pts, float(distance)
 
     #Projektion: t gibt an, wo F relativ zu A->B liegt
     t = (wx * diff_x + wy * diff_y) / denom
@@ -1192,8 +1106,8 @@ def route_world_to_world(
     s_cell = _cell_of_world(*start_world)
     e_cell = _cell_of_world(*end_world)
 
-    s_cell = _pick_free_cell_near(s_cell, blocked, max_radius=3)
-    e_cell = _pick_free_cell_near(e_cell, blocked, max_radius=3)
+    s_cell = _pick_free_cell_near(s_cell, blocked, max_radius=1)
+    e_cell = _pick_free_cell_near(e_cell, blocked, max_radius=1)
     cells = _astar_path_cached(blocked_sig, s_cell, e_cell, blocked)
     
     #print(f"[ROUTE] start_world={start_world} end_world={end_world} " f"start_cell={s_cell} goal_cell={e_cell} "f"path_len_cells={(len(cells) if cells else None)} "f"path_head={(cells[:8] if cells else None)}")

@@ -17,7 +17,6 @@ from helpers import (
     is_fixed_machine,
     swap_grid_positions,
     MemberDict,
-    rect_corners,
     distance_cost,
     Optimize_Groups,
 )
@@ -106,21 +105,27 @@ def fitness(ind: List[Dict]) -> float:
             if c in obstacles:
                 cost += obstacle_pen
 
+    floor_w = float(config.FLOOR_W)
+    floor_h = float(config.FLOOR_H)
+    grid_size = float(config.GRID_SIZE)
+    out_pen = float(config.OUT_OF_BOUNDS_PENALTY)
     for m in ind:
-        for c in occupied_cells(m, Clearance = True):
-            if c in config.OBSTACLES:
-                cost += float(config.OBSTACLE_PENALTY)
-
-    for m in ind:
-        w_m = float(m["w_cells"]) * float(config.GRID_SIZE)
-        h_m = float(m["h_cells"]) * float(config.GRID_SIZE)
-        poly = rect_corners((float(m["x"]), float(m["y"])), w_m, h_m, int(m.get("z", 0)))
+        z = int(m.get("z", 0))
+        w_eff, h_eff = effective_dims(m, z)
+        machine_width = float(w_eff) * grid_size
+        machine_height = float(h_eff) * grid_size
+        centerX = float(m["x"])
+        centerY = float(m["y"])
+        left = centerX - (machine_width / 2.0)
+        right = centerX + (machine_width/ 2.0)
+        bottom = centerY - (machine_height / 2.0)
+        top = centerY + (machine_height / 2.0)
         out_count = 0
-        for x, y in poly:
-            if x < 0.0 or x > float(config.FLOOR_W) or y < 0.0 or y > float(config.FLOOR_H):
+        for x, y in ((left, bottom), (left, top), (right, bottom), (right, top)):
+            if x < 0.0 or x > floor_w or y < 0.0 or y > floor_h:
                 out_count += 1
         if out_count:
-            cost += float(config.OUT_OF_BOUNDS_PENALTY) * float(out_count)
+            cost += out_pen * float(out_count)
     return cost
 
 def uniform_crossover(a: List[Dict], b: List[Dict]) -> List[Dict]:
@@ -157,7 +162,6 @@ def tauschen(ind: List[Dict], swap_prob: float) -> None:
         return False
     
     swap_grid_positions(m1, m2)
-    print("Swap")
     if config.GROUP_PHASE:
         enforce_group_members(ind)
     return True
@@ -300,10 +304,8 @@ def teleport(ind: List[Dict]) -> None:
         if _placement_ok(ind, i, cand, cand_cells = cand_cells, footprints = footprints):
             ind[i] = cand
             change = True
-        if footprints is not None:
-            footprints[i] = cand_cells
-        if config.GROUP_PHASE:
-            enforce_group_members(ind)
+            if footprints is not None:
+                footprints[i] = cand_cells
 
     if config.GROUP_PHASE and change:
         enforce_group_members(ind)
@@ -312,10 +314,11 @@ def teleport(ind: List[Dict]) -> None:
 
 def dynamic_parametrisation():
     """Dynamische Anpassung der Parameter im verlauf des GAs, abhängig von der verbesserungsrate"""
-    config.MUTATION_PROB
-    config.MUTATION_ROT_PROB
-    config.SWAP_PROB
-    config.TELEPORT_PROB
+    mut_prob = config.MUTATION_PROB
+    rot_prob = config.MUTATION_ROT_PROB
+    swap_prob = config.SWAP_PROB
+    tel_prob = config.TELEPORT_PROB
+
     return
 
 def run_ga(generations: int, progress_callback=None) -> Tuple[Optional[List[Dict]], float]:
@@ -335,7 +338,7 @@ def run_ga(generations: int, progress_callback=None) -> Tuple[Optional[List[Dict
     
         for g in range(1, int(generations) + 1):
             #teleport wahrscheinlichkeit kontinuierlich erhöhen
-            config.TELEPORT_PROB += 1 / (generations * 10)
+            config.TELEPORT_PROB += 1 / (generations * 5)
 
             if config.STOP_REQUESTED:
                 if progress_callback:
@@ -349,7 +352,7 @@ def run_ga(generations: int, progress_callback=None) -> Tuple[Optional[List[Dict
             paired.sort(key=lambda p: p[0])
 
             EliteKeep = int(config.ELITE_KEEP)
-            elites = [copy.deepcopy(p[1]) for p in paired[:EliteKeep]]
+            elites = [p[1] for p in paired[:EliteKeep]]
             elite_scores = [p[0] for p in paired[:EliteKeep]]
 
             SwapStateBestThisGen = bool(paired[0][2]) if paired else False
@@ -357,7 +360,6 @@ def run_ga(generations: int, progress_callback=None) -> Tuple[Optional[List[Dict
             SwapImproved = ImprovedThisGen and SwapStateBestThisGen
             old_best_score = best_score
             if ImprovedThisGen:
-                print("verbessert")
                 best_score = float(elite_scores[0])
                 best_ind = copy.deepcopy(elites[0])
                 stagnated = 0

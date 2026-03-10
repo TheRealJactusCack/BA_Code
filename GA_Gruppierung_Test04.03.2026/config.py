@@ -1,12 +1,12 @@
-GENERATIONS = 200
-POPULATION_SIZE = 50
+GENERATIONS = 100
+POPULATION_SIZE = 100
 ELITE_KEEP = 25
 MACHINE_COUNT = 10
 
 FLOOR_W = 20.0
 FLOOR_H = 15.0      
 
-GRID_SIZE = 0.5
+GRID_SIZE = 0.25
 
 MACHINE_SIZES = [(1.0, 1.0) for _ in range(MACHINE_COUNT)]
 
@@ -75,7 +75,7 @@ OTHER_WEIGHT = 1
 
 MODUS = "Rotation"  # "Rotation" oder "Tauschen"
 
-CREATE_GROUPS = True
+CREATE_GROUPS = False
 GROUPS_FOR_GA = []
 GROUP_PHASE = False
 GROUP_BY = "Manhatten" # aktuell: Worker, Manhatten, Anschluss möglich
