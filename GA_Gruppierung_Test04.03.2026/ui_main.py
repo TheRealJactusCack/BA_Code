@@ -126,10 +126,10 @@ class MainWindow(QWidget):
         mut_group.layout().addWidget(self.mutation_prob_spin)
         ga_v.addWidget(mut_group)
 
-        self.mutation_pos_std_spin = QDoubleSpinBox()
-        self.mutation_pos_std_spin.setRange(0.1, 1000.0)
+        self.mutation_pos_std_spin = QSpinBox()
+        self.mutation_pos_std_spin.setRange(1, 1000)
         self.mutation_pos_std_spin.setValue(config.MUTATION_POS_STD)
-        self.mutation_pos_std_spin.setSingleStep(0.1)
+        self.mutation_pos_std_spin.setSingleStep(1)
         std_group.setLayout(QVBoxLayout())
         std_group.layout().addWidget(QLabel("Std. Abweichung"),alignment=Qt.AlignmentFlag.AlignHCenter)
         std_group.layout().addWidget(self.mutation_pos_std_spin)
@@ -328,7 +328,7 @@ class MainWindow(QWidget):
         config.POPULATION_SIZE = int(self.population_size_spin.value())
         config.ELITE_KEEP = int(self.elite_keep_spin.value())
         config.MUTATION_PROB = float(self.mutation_prob_spin.value())
-        config.MUTATION_POS_STD = float(self.mutation_pos_std_spin.value())
+        config.MUTATION_POS_STD = int(self.mutation_pos_std_spin.value())
         config.MUTATION_ROT_PROB = float(self.mutation_rot_prob_spin.value())
         config.SWAP_PROB = float(self.mutation_swap_prob_spin.value())
         config.GENERATIONS = int(self.generations_spin.value())
@@ -361,15 +361,23 @@ class MainWindow(QWidget):
         best_so_far = float("inf")
         last_improved_gen_ui = None
         score_differenz = None
-        def _cb(g, total, best_score_cb, best_ind_cb, population=None, Swap = False):
+        def callback(g, total, best_score_cb, best_ind_cb, population=None, Swap = False):
             nonlocal best_so_far, last_improved_gen_ui, score_differenz
             self.gencounter_label.setText(f"{g} / {total}")
-            if population:
-                self.pop_canvas.set_population(population)
+            # if population:
+            #     self.pop_canvas.set_population(population)
             score_differenz = (best_so_far - best_score_cb) / best_so_far * 100
-            if best_score_cb < best_so_far:
+            improved = best_score_cb < best_so_far
+            if improved:
                 best_so_far = float(best_score_cb)
                 last_improved_gen_ui = int(g)
+
+            update_intevall = int(getattr(config, "UI_UPDATE_EVERY_N", 1)) or 1
+            update_necessary = improved or bool(Swap) or (int(g) % update_intevall == 0 ) or (int(g) == int (total)) 
+
+            if population and update_necessary:
+                self.pop_canvas.set_population(population)
+
             last_txt = "-" if last_improved_gen_ui is None else str(last_improved_gen_ui)
             improvement_txt = "-" if score_differenz is None else f"{score_differenz:.4f}"
             self.status_label.setText(f"Gen {g} bester Score {best_score_cb:.2f} | letzte Änderung: Gen {last_txt} | prozentuale Änderung {improvement_txt} %")
@@ -377,7 +385,8 @@ class MainWindow(QWidget):
             self.fitness_Point_Y.append(float(best_score_cb))
             Swap = bool(Swap)
             self.SwapTookPlace.append(Swap)
-            self.curve.setData(self.fitness_Point_X, self.fitness_Point_Y)
+            if update_necessary:
+                self.curve.setData(self.fitness_Point_X, self.fitness_Point_Y)
             if Swap:
                 GenIndex = int(g)
                 if GenIndex not in self.SwapsHappened:
@@ -385,9 +394,10 @@ class MainWindow(QWidget):
                     self.SwapX.append(GenIndex)
                     self.SwapY.append(float(best_score_cb))
                     self.SwapMarker.setData(x=self.SwapX, y=self.SwapY)
-            QApplication.processEvents()
+            if update_necessary:
+                QApplication.processEvents()
 
-        best_ind, best_score = run_ga(gens, progress_callback=_cb)
+        best_ind, best_score = run_ga(gens, progress_callback= callback)
         self.start_btn.setEnabled(True)
         self.stop_btn.setEnabled(False)
 

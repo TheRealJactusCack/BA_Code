@@ -29,6 +29,8 @@ from helpers import (
     machine_gas_point,
     machine_other_point,
     normalize_individual,
+    is_fixed_machine,
+    swap_grid_positions,
     occupied_cells
 )
 
@@ -197,34 +199,17 @@ class LayoutCanvas(QWidget):
 
     def _tauschen(self, mi1: int, mi2: int) -> float:
         """
-        Input: zwei Indizes; Output: new fitness; 
+        Input: zwei Indizes; Output: new fitness
         Nutzen: interaktives Tauschen + Score update
         """
         if not self.layout_data or not (0 <= int(mi1) < len(self.layout_data)) or not (0 <= int(mi2) < len(self.layout_data)):
             return float("nan")
         
         m1, m2 = self.layout_data[int(mi1)], self.layout_data[int(mi2)]
+        if is_fixed_machine(m1) or is_fixed_machine(m2):
+            return float("nan")  # feste Maschine, kein Tausch
 
-        fixed_list = getattr(config, "MACHINE_FIXED", [])
-        idx1 = int(m1.get("idx", -1))
-        if 0 <= idx1 < len(fixed_list) and fixed_list[idx1] is not None:
-            return float("nan") # feste Maschine, kein Tausch
-        
-        idx2 = int(m2.get("idx", -1))
-        if 0 <= idx2 < len(fixed_list) and fixed_list[idx2] is not None:
-            return float("nan") # feste Maschine, kein Tausch
-
-        m1_gx, m1_gy = m1["gx"], m1["gy"]
-        m2_gx, m2_gy = m2["gx"], m2["gy"]
-
-        m1["gx"], m2["gx"] = m2_gx, m1_gx
-        m1["gy"], m2["gy"] = m2_gy, m1_gy
-
-        w1, h1 = effective_dims(m1, int(m1.get("z", 0)))
-        w2, h2 = effective_dims(m2, int(m2.get("z", 0)))
-
-        m1["x"], m1["y"] = cell_center_from_topleft(int(m1["gx"]), int(m1["gy"]), int(w1), int(h1))
-        m2["x"], m2["y"] = cell_center_from_topleft(int(m2["gx"]), int(m2["gy"]), int(w2), int(h2))
+        swap_grid_positions(m1, m2)
 
         normalize_individual(self.layout_data)
         self._routed_cache = None

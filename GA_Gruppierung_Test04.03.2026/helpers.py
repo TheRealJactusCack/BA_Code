@@ -33,6 +33,8 @@ def Create_Groups(BestIndCopy: List[Dict]) -> List[Optional[List[Optional[int]]]
     elif config.GROUP_BY == "Manhatten":
         Machine_Distances: List[List[float]] = List_Machine_Distance(BestIndCopy)
         Gruppen = minimum_weight_perfect_matching(Machine_Distances)
+    elif config.GROUP_BY =="Anschluss":
+        print("Code zum Gruppieren nach Gruppen fehlt")
     return Gruppen
 
 def List_Machine_Points(BestIndCopy: List[Dict]) -> List[Tuple[float, float]]:
@@ -286,7 +288,7 @@ def update_grid_counts() -> None:
     except Exception:
         print("helpers: 34")
         config.EXIT_CELL = (config.GRID_COLS - 1, config.GRID_ROWS - 1)
-    #print(f"GRID_COLS={config.GRID_COLS} GRID_ROWS={config.GRID_ROWS}")
+
 
 def rect_corners(center: Tuple[float, float], w: float, h: float, angle_deg: int) -> List[Tuple[float, float]]:
     """Vier Eckpunkte eines Rechtecks mit Rotation um center."""
@@ -327,7 +329,7 @@ def effective_dims(m_or_w_h, z: Optional[int] = None) -> Tuple[int, int]:
 
 def get_worker_clearance(m: Dict) -> set[Tuple[int, int]]:
     """Erstellt das 1*1 meter feld für den Worker"""
-    worker_point = machine_worker_point(m)  #Hier haben wir den Punkt
+    worker_point = machine_worker_point(m)
     rotation = m.get("z", 0)
     clearance: set[Tuple[int, int]] = set()
     if worker_point is None:
@@ -337,7 +339,6 @@ def get_worker_clearance(m: Dict) -> set[Tuple[int, int]]:
     side_raw = ((getattr(config, "MACHINE_WORKERS", []) or [None])[int(m.get("idx", -1))] or {}).get("side_worker") if 0 <= int(m.get("idx", -1)) < len(getattr(config, "MACHINE_WORKERS", []) or []) else None
     side = str(side_raw).strip().lower()
     actual_side = _rotated_side(side, rotation)
-    # print(on_x_line, on_y_line)
 
     OneMeterInGrid = int(round(1 / config.GRID_SIZE))
     half = int(math.ceil(OneMeterInGrid / 2))
@@ -435,6 +436,23 @@ def normalize_individual(ind: List[Dict]) -> None:
         m["gy"] = max(0, min(max_row, m["gy"]))
         m["x"], m["y"] = cell_center_from_topleft(m["gx"], m["gy"], w_eff, h_eff)
 
+def is_fixed_machine(m: Dict) -> bool:
+    """True, wenn Maschine feste Koordinaten/Rotation aus Excel hat."""
+    fixed_list = getattr(config, "MACHINE_FIXED", [])
+    idx = int(m.get("idx", -1))
+    return 0 <= idx < len(fixed_list) and fixed_list[idx] is not None
+
+def swap_grid_positions(m1: Dict, m2: Dict) -> None:
+    """Tauscht gx/gy von zwei maschinen Maschinen und aktualisiert x/y konsistent!"""
+    m1["gx"], m2["gx"] = m2["gx"], m1["gx"]
+    m1["gy"], m2["gy"] = m2["gy"], m1["gy"]
+
+    width1, height1 = effective_dims(m1, int(m1.get("z", 0)))
+    width2, height2 = effective_dims(m2, int(m2.get("z", 0)))
+
+    m1["x"], m1["y"] = cell_center_from_topleft(int(m1["gx"]), int(m1["gy"]), int(width1), int(height1))
+    m2["x"], m2["y"] = cell_center_from_topleft(int(m2["gx"]), int(m2["gy"]), int(width2), int(height2))
+ 
 def can_place_at(col: int, row: int, w_cells: int, h_cells: int, occupied_set: set[Tuple[int, int]]) -> bool:
     #True wenn keine Kollision mit obstacles oder occupied_set
     for dx in range(int(w_cells)):
@@ -1362,10 +1380,10 @@ def distance_cost(ind: List[Dict], config: any) -> float:
         w = float(m.get("weight", 1.0) or 1.0)
         if m["a"] is None:
             length = float(m["length_m"])
-            cost += no_path_penalty if not math.isfinite(length) else length * w * config.MATERIAL_WEIGHT * 10
+            cost += no_path_penalty if not math.isfinite(length) else length * w * config.MATERIAL_WEIGHT
         elif m["b"] is None:
             length = float(m["length_m"])
-            cost += no_path_penalty if not math.isfinite(length) else length * w * config.MATERIAL_WEIGHT * 10
+            cost += no_path_penalty if not math.isfinite(length) else length * w * config.MATERIAL_WEIGHT
         else:
             length = float(m["length_m"])
             cost += no_path_penalty if not math.isfinite(length) else length * w * config.MATERIAL_WEIGHT
