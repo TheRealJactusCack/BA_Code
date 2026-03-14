@@ -33,8 +33,6 @@ def Create_Groups(BestIndCopy: List[Dict]) -> List[Optional[List[Optional[int]]]
     elif config.GROUP_BY == "Manhatten":
         Machine_Distances: List[List[float]] = List_Machine_Distance(BestIndCopy)
         Gruppen = minimum_weight_perfect_matching(Machine_Distances)
-    elif config.GROUP_BY =="Anschluss":
-        print("Code zum Gruppieren nach Gruppen fehlt")
     return Gruppen
 
 def List_Machine_Points(BestIndCopy: List[Dict]) -> List[Tuple[float, float]]:
@@ -703,74 +701,84 @@ def _rotated_side(side: str, rotation_deg: int) -> str:
 #=============================================================================================
 #=========================0= Anfang der Port berechnung ======================================
 #5 Funktionen für 6 Ports (dumm und entstanden durch das nacheinander hinzufügen der Ports) ==
-def machine_optional_point(
-    m: Dict,
-    *,
-    point_type: str,
-    side_key: str,
-    offset_key: str,
-    ) -> Optional[Tuple[float, float]]:
-    idx = int(m.get("idx", 0))
-    machine_width, machine_height = config.MACHINE_SIZES[idx]
 
-    type = getattr(config, point_type, [])
-    point = type[idx] if idx < len(type) else None
-    if not point:
-        return None
-    
-    side_raw = point.get(side_key, None)
-    offset_raw = point.get(offset_key, None)
+_PT_CACHE_KEY = "__pt_cache"
 
-    if side_raw in (None, "") or offset_raw is None:
-        return None
-    
-    side = str(side_raw).strip().lower()
-    offset = float(offset_raw)
-    return port_world_xy(
-        center_x = float(m["x"]),
-        center_y = float(m["y"]),
-        w_m = float(machine_width),
-        d_m = float(machine_height),
-        side = side,
-        offset_m = offset,
-        rotation_deg = int(m.get("z", 0)),  
-    )
-
-def machine_water_point(m: Dict) -> Optional[Tuple[float, float]]:
-    return machine_optional_point(m, point_type= "MACHINE_WATER", side_key = "side_water", offset_key = "offset_water")
-
-def machine_gas_point(m: Dict) -> Optional[Tuple[float, float]]:
-    return machine_optional_point(m, point_type= "MACHINE_GAS", side_key = "side_gas", offset_key = "offset_gas")
-
-def machine_other_point(m: Dict) -> Optional[Tuple[float, float]]:
-    return machine_optional_point(m, point_type= "MACHINE_OTHER", side_key = "side_other", offset_key = "offset_other")
-
-def machine_worker_point(m: Dict) -> Optional[Tuple[float, float]]:
-    return machine_optional_point(m, point_type= "MACHINE_WORKERS", side_key = "side_worker", offset_key = "offset_worker")
-
-def machine_port_point(m: Dict, kind: str) -> Tuple[float, float]:
-    """Weltkoordinate des Ports einer Maschine."""
+def _pose(m: Dict) -> Tuple[int, float, float, float, float, int]:
+    """idx, cx, cy, w_m, d_m, rot"""
     idx = int(m.get("idx", 0))
     w_m, d_m = config.MACHINE_SIZES[idx]
-    ports = getattr(config, "MACHINE_PORTS", [])
-    pd = ports[idx] if idx < len(ports) else {}
+    return idx, float(m["x"]), float(m["y"]), float(w_m), float(d_m), int(m.get("z", 0)) % 360
 
+def _port_xy_cached(m: Dict, cache_key: str, side: str, offset: float) -> Tuple[float, float]:
+    """Kurzer Cache: spart Zeit, weil die Punkte oft abgefragt werden."""
+    idx, cx, cy, w_m, d_m, rot = _pose(m)
+    cache = m.get(_PT_CACHE_KEY)
+    if not isinstance(cache, dict):
+        cache = {}
+        m[_PT_CACHE_KEY] = cache
+    state = (cx, cy, rot, side, float(offset))
+    hit = cache.get(cache_key)
+    if hit and hit[0] == state:
+        return hit[1]
+    pt = port_world_xy(
+        center_x=cx, center_y=cy, w_m=w_m, d_m=d_m,
+        side=str(side).strip().lower(),
+        offset_m=float(offset),
+        rotation_deg=rot,
+    )
+    cache[cache_key] = (state, pt)
+    return pt
+
+def _table_row(table_attr: str, idx: int) -> Optional[Dict]:
+    table = getattr(config, table_attr, [])
+    if not table or idx < 0 or idx >= len(table):
+        return None
+    row = table[idx]
+    return row if isinstance(row, dict) else None
+
+def machine_port_point(m: Dict, kind: str) -> Tuple[float, float]:
+    """Input/Output Port einer Maschine (kind='in'|'out')."""
+    idx, _, _, _, d_m, _ = _pose(m)
+    ports = getattr(config, "MACHINE_PORTS", [])
+    pd = ports[idx] if ports and 0 <= idx < len(ports) else {}
     if kind == "in":
         side = pd.get("side_in", "left")
         offset = pd.get("offset_in", float(d_m) / 2.0)
-    else:
-        side = pd.get("side_out", "right")
-        offset = pd.get("offset_out", float(d_m) / 2.0)
+        return _port_xy_cached(m, "in", str(side), float(offset))
+    side = pd.get("side_out", "right")
+    offset = pd.get("offset_out", float(d_m) / 2.0)
+    return _port_xy_cached(m, "out", str(side), float(offset))
 
-    return port_world_xy(
-        center_x=float(m["x"]),
-        center_y=float(m["y"]),
-        w_m=float(w_m),
-        d_m=float(d_m),
-        side=str(side),
-        offset_m=float(offset),
-        rotation_deg=int(m.get("z", 0)),
-    )
+def machine_worker_point(m: Dict) -> Optional[Tuple[float, float]]:
+    idx = int(m.get("idx", 0))
+    row = _table_row("MACHINE_WORKERS", idx)
+    if not row:
+        return None
+    side = row.get("side_worker")
+    offset = row.get("offset_worker")
+    if side in (None, "") or offset is None:
+        return None
+    return _port_xy_cached(m, "worker", str(side), float(offset))
+
+def machine_utility_point(m: Dict, kind: str) -> Optional[Tuple[float, float]]:
+    kind_n = str(kind).strip().lower()
+    idx = int(m.get("idx", 0))
+
+    util_map = getattr(config, "MACHINE_UTILITIES", None)
+    if not isinstance(util_map, dict):
+        return None
+    ports = util_map.get(kind_n) or []
+    if not (0 <= idx < len(ports)):
+        return None
+    p = ports[idx]
+    if not isinstance(p, dict):
+        return None
+    side = p.get("side")
+    offset = p.get("offset")
+    if side in (None, "") or offset is None:
+        return None
+    return _port_xy_cached(m, f"util:{kind_n}", str(side), float(offset))
 
 def machine_input_point(m: Dict) -> Tuple[float, float]:
     return machine_port_point(m, "in")
@@ -1156,7 +1164,7 @@ def compute_routed_edges(ind: List[Dict]) -> Dict[str, List[Dict]]:
     entry_world = cell_center_from_topleft(int(config.ENTRY_CELL[0]), int(config.ENTRY_CELL[1]), 1, 1)
     exit_world = cell_center_from_topleft(int(config.EXIT_CELL[0]), int(config.EXIT_CELL[1]), 1, 1)
 
-    out: Dict[str, List[Dict]] = {"material": [], "worker": [], "water": [], "gas": [], "other": []}
+    out: Dict[str, List[Dict]] = {"material": [], "worker": []}
 
     edges = list(getattr(config, "MATERIAL_CONNECTIONS", []))
     for e in edges:
@@ -1216,65 +1224,28 @@ def compute_routed_edges(ind: List[Dict]) -> Dict[str, List[Dict]]:
         Previous_a_idx = a_idx
         Previous_b_idx = b_idx
 
-    #=========================================================================================================
-    #================ Hier werden die optionalen Wasser, Gas und Sonstiges Verbindungen definiert ============
-    #=========================================================================================================
-
-    if config.WATER_CELL[0] is not None:
-        water_edges = list(getattr(config, "WATER_CONNECTIONS", []))
-        #print(f"Water edges: {water_edges}")
-        for _, b in water_edges:
-            b_idx: Optional[int] = None if b is None else int(b)
-            if b_idx is None:
+    util_cells = getattr(config, "UTILITY_CELLS", {}) or {}
+    util_edges = getattr(config, "UTILITY_CONNECTIONS", {}) or {}
+    for kind, util_cell in util_cells.items():
+        if not util_cell or util_cell[0] is None:
+            continue
+        kind_n = str(kind).strip().lower()
+        out.setdefault(kind_n, [])
+        edges = list(util_edges.get(kind_n, []))
+        for _, u_machine in edges:
+            m_idx: Optional[int] = None if u_machine is None else int(u_machine)
+            if m_idx is None or not (0 <= m_idx < n):
                 continue
-            else:
-                if not (0 <= b_idx < n):
-                    print(f"Water connection with invalid b_idx={b_idx}, skipping")
-                    continue
-                p2 = machine_water_point(ind[b_idx])
-                w1 = config.WATER_CELL[0]
-            if config.WATER_CELL[1] == None:
-                pts, length_m = route_port_to_point(w1, p2)
-            else:
-                w2 = config.WATER_CELL[1]
-                pts, length_m = route_line_to_world(w1, w2, p2)
-            out["water"].append({"a": a_idx, "b": b_idx, "pts": pts, "length_m": float(length_m)})
-
-    if config.GAS_CELL[0] is not None:
-        gas_edges = list(getattr(config, "GAS_CONNECTIONS", []))
-        for _, b in gas_edges:
-            b_idx: Optional[int] = None if b is None else int(b)
-            if b_idx is None:
+            p2 = machine_utility_point(ind[m_idx], kind_n)
+            if p2 is None:
                 continue
+            s1 = util_cell[0]
+            s2 = util_cell[1]
+            if s2 is None:
+                pts, length_m = route_port_to_point(s1, p2)
             else:
-                if not (0 <= b_idx < n):
-                    continue
-                p2 = machine_gas_point(ind[b_idx])
-                g1 = config.GAS_CELL[0]
-            if config.GAS_CELL[1] == None:
-                pts, length_m = route_port_to_point(g1, p2)
-            else:
-                g2 = config.GAS_CELL[1]
-                pts, length_m = route_line_to_world(g1, g2, p2) 
-            out["gas"].append({"a": a_idx, "b": b_idx, "pts": pts, "length_m": float(length_m)})
-
-    if config.OTHER_CELL[0] is not None:
-        other_edges = list(getattr(config, "OTHER_CONNECTIONS", []))
-        for _, b in other_edges:
-            b_idx: Optional[int] = None if b is None else int(b)
-            if b_idx is None:
-                continue
-            else:
-                if not (0 <= b_idx < n):
-                    continue
-                p2 = machine_other_point(ind[b_idx])
-                o1 = config.OTHER_CELL[0]
-            if config.OTHER_CELL[1] == None:
-                pts, length_m = route_port_to_point(o1, p2)
-            else:
-                o2 = config.OTHER_CELL[1]
-                pts, length_m = route_line_to_world(o1, o2, p2)
-            out["other"].append({"a": a_idx, "b": b_idx, "pts": pts, "length_m": float(length_m)})
+                pts, length_m = route_line_to_world(s1, s2, p2)
+            out[kind_n].append({"a": None, "b": m_idx, "pts": pts, "length_m": float(length_m)})
 
     return out
 
@@ -1292,27 +1263,19 @@ def distance_cost(ind: List[Dict], config: any) -> float:
     cost = 0.0
     for m in routed["material"]:
         w = float(m.get("weight", 1.0) or 1.0)
-        if m["a"] is None:
-            length = float(m["length_m"])
-            cost += no_path_penalty if not math.isfinite(length) else length * w * config.MATERIAL_WEIGHT
-        elif m["b"] is None:
-            length = float(m["length_m"])
-            cost += no_path_penalty if not math.isfinite(length) else length * w * config.MATERIAL_WEIGHT
-        else:
-            length = float(m["length_m"])
-            cost += no_path_penalty if not math.isfinite(length) else length * w * config.MATERIAL_WEIGHT
+        length = float(m["length_m"])
+        cost += no_path_penalty if not math.isfinite(length) else length * w * config.MATERIAL_WEIGHT
 
     for e in routed["worker"]:
-        length = float(e["length_m"])
+        length = round(float(e["length_m"]),2)
         cost += no_path_penalty if not math.isfinite(length) else length * config.WORKER_WEIGHT
-    for w in routed["water"]:
-        length = float(w["length_m"])
-        cost += no_path_penalty if not math.isfinite(length) else length * config.WATER_WEIGHT
-    for g in routed["gas"]:
-        length = float(g["length_m"])
-        cost += no_path_penalty if not math.isfinite(length) else length * config.GAS_WEIGHT
-    for o in routed["other"]:
-        length = float(o["length_m"])
-        cost += no_path_penalty if not math.isfinite(length) else length * config.OTHER_WEIGHT
+    util_weights = getattr(config, "UTILITY_WEIGHTS", {}) or {}
+    for kind, edges in routed.items():
+        if kind in {"material", "worker"}:
+            continue
+        w_kind = float(util_weights.get(kind, 1.0))
+        for e in edges:
+            length = round(float(e["length_m"]), 2)
+            cost += no_path_penalty if not math.isfinite(length) else length * w_kind
 
     return float(cost)
