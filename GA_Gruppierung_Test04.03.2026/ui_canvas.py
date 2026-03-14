@@ -16,7 +16,7 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
     QWidget, QMessageBox, QCheckBox
 )
-
+import excel_export
 import ui_main
 import config
 from helpers import (
@@ -764,7 +764,7 @@ class BestDialog(QDialog):
 
         self.excel_button = QPushButton("Excel erstellen")
         self.excel_button.setFixedSize(200, 30)
-        self.excel_button.clicked.connect(self._save_layout)
+        self.excel_button.clicked.connect(self.create_excel)
         self.excel_button.setEnabled(False)
 
         self.toggle_btn = QPushButton("Materialwege")
@@ -825,6 +825,11 @@ class BestDialog(QDialog):
             self.parent()._saved_best_layout = copy.deepcopy(self._saved_layout)
         self.layout_button.setEnabled(True)
         self.excel_button.setEnabled(True)
+
+    def create_excel(self):
+        if not hasattr(self, "_saved_layout") or self._saved_layout is None:
+            return
+        excel_export.save_sheet(self._saved_layout)
 
     def _toggle_mode(self) -> None:
         """Wechselt Canvas-Ansicht: Materialfluss <-> Fußweg"""
