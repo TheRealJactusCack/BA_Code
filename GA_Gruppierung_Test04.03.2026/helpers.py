@@ -704,15 +704,14 @@ def _rotated_side(side: str, rotation_deg: int) -> str:
 
 _PT_CACHE_KEY = "__pt_cache"
 
-def _pose(m: Dict) -> Tuple[int, float, float, float, float, int]:
+def point_location(m: Dict) -> Tuple[int, float, float, float, float, int]:
     """idx, cx, cy, w_m, d_m, rot"""
     idx = int(m.get("idx", 0))
     w_m, d_m = config.MACHINE_SIZES[idx]
     return idx, float(m["x"]), float(m["y"]), float(w_m), float(d_m), int(m.get("z", 0)) % 360
 
-def _port_xy_cached(m: Dict, cache_key: str, side: str, offset: float) -> Tuple[float, float]:
-    """Kurzer Cache: spart Zeit, weil die Punkte oft abgefragt werden."""
-    idx, cx, cy, w_m, d_m, rot = _pose(m)
+def port_xy_cached(m: Dict, cache_key: str, side: str, offset: float) -> Tuple[float, float]:
+    idx, cx, cy, w_m, d_m, rot = point_location(m)
     cache = m.get(_PT_CACHE_KEY)
     if not isinstance(cache, dict):
         cache = {}
@@ -730,7 +729,7 @@ def _port_xy_cached(m: Dict, cache_key: str, side: str, offset: float) -> Tuple[
     cache[cache_key] = (state, pt)
     return pt
 
-def _table_row(table_attr: str, idx: int) -> Optional[Dict]:
+def table_row(table_attr: str, idx: int) -> Optional[Dict]:
     table = getattr(config, table_attr, [])
     if not table or idx < 0 or idx >= len(table):
         return None
@@ -739,27 +738,27 @@ def _table_row(table_attr: str, idx: int) -> Optional[Dict]:
 
 def machine_port_point(m: Dict, kind: str) -> Tuple[float, float]:
     """Input/Output Port einer Maschine (kind='in'|'out')."""
-    idx, _, _, _, d_m, _ = _pose(m)
+    idx, _, _, _, d_m, _ = point_location(m)
     ports = getattr(config, "MACHINE_PORTS", [])
     pd = ports[idx] if ports and 0 <= idx < len(ports) else {}
     if kind == "in":
         side = pd.get("side_in", "left")
         offset = pd.get("offset_in", float(d_m) / 2.0)
-        return _port_xy_cached(m, "in", str(side), float(offset))
+        return port_xy_cached(m, "in", str(side), float(offset))
     side = pd.get("side_out", "right")
     offset = pd.get("offset_out", float(d_m) / 2.0)
-    return _port_xy_cached(m, "out", str(side), float(offset))
+    return port_xy_cached(m, "out", str(side), float(offset))
 
 def machine_worker_point(m: Dict) -> Optional[Tuple[float, float]]:
     idx = int(m.get("idx", 0))
-    row = _table_row("MACHINE_WORKERS", idx)
+    row = table_row("MACHINE_WORKERS", idx)
     if not row:
         return None
     side = row.get("side_worker")
     offset = row.get("offset_worker")
     if side in (None, "") or offset is None:
         return None
-    return _port_xy_cached(m, "worker", str(side), float(offset))
+    return port_xy_cached(m, "worker", str(side), float(offset))
 
 def machine_utility_point(m: Dict, kind: str) -> Optional[Tuple[float, float]]:
     kind_n = str(kind).strip().lower()
@@ -778,7 +777,7 @@ def machine_utility_point(m: Dict, kind: str) -> Optional[Tuple[float, float]]:
     offset = p.get("offset")
     if side in (None, "") or offset is None:
         return None
-    return _port_xy_cached(m, f"util:{kind_n}", str(side), float(offset))
+    return port_xy_cached(m, f"util:{kind_n}", str(side), float(offset))
 
 def machine_input_point(m: Dict) -> Tuple[float, float]:
     return machine_port_point(m, "in")

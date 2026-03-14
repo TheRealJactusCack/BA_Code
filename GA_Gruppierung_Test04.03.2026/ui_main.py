@@ -285,17 +285,19 @@ class MainWindow(QWidget):
 
     # Lädt das aktuell ausgewählte Sheet erneut (z.B. nach Excel-Änderungen)
     def reload_excel(self):
-        config.WATER_CELL = (None, None)
-        config.GAS_CELL = (None, None)
-        config.OTHER_CELL = (None, None)
+        config.UTILITY_CELLS = {}
+        config.UTILITY_CONNECTIONS = {}
+        config.UTILITY_WEIGHTS = {}
+        config.MACHINE_UTILITIES = {}
         if self.xlsx_path and self.sheet_combo.currentText():
             self._apply_excel(self.xlsx_path, self.sheet_combo.currentText())
 
     # Event-Handler: wenn Sheet gewechselt wird, Layout neu laden
     def _on_sheet_changed(self, sheet: str):
-        config.WATER_CELL = (None, None)
-        config.GAS_CELL = (None, None)
-        config.OTHER_CELL = (None, None)
+        config.UTILITY_CELLS = {}
+        config.UTILITY_CONNECTIONS = {}
+        config.UTILITY_WEIGHTS = {}
+        config.MACHINE_UTILITIES = {}
         if self.xlsx_path and sheet:
             self._apply_excel(self.xlsx_path, sheet)
 
@@ -417,6 +419,7 @@ class MainWindow(QWidget):
             return
         BestDialog(copy.deepcopy(self._last_best_ind), parent=self, title="Beste Lösung (gespeichert)").exec()
 
+    # test
     # Stoppt den GA über ein globales Flag, das in run_ga periodisch geprüft wird
     def _stop(self):
         config.STOP_REQUESTED = True

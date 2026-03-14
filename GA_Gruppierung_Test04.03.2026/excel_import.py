@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
 
 import math
@@ -44,9 +44,9 @@ class Column:
 class MachineRow:
     id: str
     label: Optional[str]
-    x: float
-    y: float
-    rot: float
+    x: Optional[float]
+    y: Optional[float]
+    rot: Optional[float]
     w: float
     d: float
     input: str
@@ -58,38 +58,16 @@ class MachineRow:
     worker: Optional[int]
     side_worker: Optional[str]
     offset_worker: Optional[float]
-    side_water: Optional[str]
-    offset_water: Optional[float]
-    side_gas: Optional[str]
-    offset_gas: Optional[float]
-    side_other: Optional[str]
-    offset_other: Optional[float]
+    utility_ports: Dict[str, Tuple[str, float]] = field(default_factory = dict)
 
 @dataclass(frozen=True)
-class Water:
+class Utility:
+    kind: str
     id: str
     x1: float
     y1: float
-    x2: float
-    y2: float
-    input: str
-
-@dataclass(frozen=True)
-class Gas:
-    id: str
-    x1: float
-    y1: float
-    x2: float
-    y2: float
-    input: str
-
-@dataclass(frozen=True)
-class Other:
-    id: str
-    x1: float
-    y1: float
-    x2: float
-    y2: float
+    x2: Optional[float]
+    y2: Optional[float]
     input: str
 
 def _f(v: Any) -> Optional[float]:
@@ -285,7 +263,7 @@ def _cells_for_rotated_rect(cx: float, cy: float, w: float, h: float, rot_deg: f
 
 def read_layout_from_sheet(
     xlsx_path: str, sheet_name: str
-) -> Tuple[List[Wall], List[Column], List[MachineRow], Dict[str, Any]]:
+) -> Tuple[List[Wall], List[Input], List[Output], List[Column], List[MachineRow], Dict[str, List[Utility]], Dict[str, Any]]:
     wb = load_workbook(xlsx_path, data_only=True)
     if sheet_name not in wb.sheetnames:
         raise ValueError(f"Sheet {sheet_name} nicht gefunden")
@@ -323,9 +301,12 @@ def read_layout_from_sheet(
     outputs: List[Output] = []
     cols: List[Column] = []
     machines: List[MachineRow] = []
-    water: List[Water] = []
-    gas: List[Gas] = []
-    other: List[Other] = []
+    utilities: Dict[str, List[Utility]] = {}
+    utility_kinds = sorted({
+        k[:-3]
+        for k in header_map.keys()
+        if k.endswith("_in") and k not in {"side_in", "offset_in"}
+    })
 
     #======================================================================================
     #====================Hier wird eingelesen==============================================
@@ -442,15 +423,25 @@ def read_layout_from_sheet(
             if offset_out is None:
                 offset_out = float(d) / 2.0
 
-            #ports für die Anschlüsse der Maschinen
-            side_water = (_s(ws.cell(r, c).value) if (c := idx("water_in")) and ws.cell(r, c).value not in (None, "") else None)
-            raw_offset_water = (_f(ws.cell(r, c).value) if (c := idx("offset_water")) and ws.cell(r, c).value not in (None, "") else None)
-
-            side_gas = (_s(ws.cell(r, c).value) if (c := idx("gas_in")) and ws.cell(r, c).value not in (None, "") else None)
-            raw_offset_gas = (_f(ws.cell(r, c).value) if (c := idx("offset_gas")) and ws.cell(r, c).value not in (None, "") else None)          
-            
-            side_other = (_s(ws.cell(r, c).value) if (c := idx("other_in")) and ws.cell(r, c).value not in (None, "") else None)
-            raw_offset_other = (_f(ws.cell(r, c).value) if (c := idx("offset_other")) and ws.cell(r, c).value not in (None, "") else None)
+            utility_ports: Dict[str, Tuple[str, float]] = {}
+            for kind in utility_kinds:
+                u_side = idx(f"{kind}_in")
+                if not u_side:
+                    continue
+                side_val = ws.cell(r, u_side).value
+                if side_val in (None, ""):
+                    continue
+                side = _s(side_val)
+                u_off = idx(f"offset_{kind}")
+                off_raw = (_f(ws.cell(r, u_off).value) if u_off and ws.cell(r, u_off).value not in (None, "") else None)
+                if off_raw is None:
+                    if str(side).strip().lower() in {"left", "right"}:
+                        off = float(d) / 2.0
+                    else: 
+                        off = float(w) / 2.0
+                else:
+                    off = float(off_raw)
+                utility_ports[kind] = (str(side).strip(), float(off))
 
             machines.append(
                 MachineRow(
@@ -470,68 +461,43 @@ def read_layout_from_sheet(
                     worker = worker,
                     side_worker = side_w,
                     offset_worker = float(offset_w) if offset_w is not None else None,
-                    side_water = side_water,
-                    offset_water = float(raw_offset_water) if raw_offset_water is not None else None,
-                    side_gas = side_gas,
-                    offset_gas = float(raw_offset_gas) if raw_offset_gas is not None else None,
-                    side_other = side_other,
-                    offset_other = float(raw_offset_other) if raw_offset_other is not None else None
+                    utility_ports = utility_ports
                 )
             )
 
-        elif t == "water":
-            wid = str(raw_id).strip()
-            water_machine = _s(ws.cell(r, idx("input") or 0).value)
-            if water_machine is None:
+        elif t not in {"wall", "input", "output", "column", "machine"}:
+            kind = t
+            uid = str(raw_id).strip()
+            u_machines = _s(ws.cell(r, idx("input") or 0).value)
+            if u_machines is None:
                 continue
-            w_x1 = _f(ws.cell(r, idx("x1") or 0).value)
-            w_y1 = _f(ws.cell(r, idx("y1") or 0).value)
-            w_x2 = _f(ws.cell(r, idx("x2") or 0).value)
-            w_y2 = _f(ws.cell(r, idx("y2") or 0).value)
-            if all(l is not None for l in (w_x1, w_y1, w_x2, w_y2)):
-                water.append(Water(id=wid, x1=float(w_x1), y1=float(w_y1), x2=float(w_x2), y2=float(w_y2), input=water_machine))
-                continue
-            WPoint_X = _f(ws.cell(r, idx("x") or 0).value)
-            WPoint_Y = _f(ws.cell(r, idx("y") or 0).value)
-            if all(p is not None for p in (WPoint_X, WPoint_Y)):
-                water.append(Water(id=wid, x1=float(WPoint_X), y1=float(WPoint_Y), x2 = None, y2 = None, input=water_machine))
 
-        elif t == "gas":
-            gid = str(raw_id).strip()
-            gas_machine = _s(ws.cell(r, idx("input") or 0).value)
-            if gas_machine is None:
-                continue
-            g_x1 = _f(ws.cell(r, idx("x1") or 0).value)
-            g_y1 = _f(ws.cell(r, idx("y1") or 0).value)
-            g_x2 = _f(ws.cell(r, idx("x2") or 0).value)
-            g_y2 = _f(ws.cell(r, idx("y2") or 0).value)
-            if all (l is not None for l in (g_x1, g_y1, g_x2, g_y2)):
-                gas.append(Gas(id=gid, x1=float(g_x1), y1=float(g_y1), x2=float(g_x2), y2=float(g_y2), input=gas_machine))
-            GPoint_X = _f(ws.cell(r, idx("x") or 0).value)
-            GPoint_Y = _f(ws.cell(r, idx("y") or 0).value)
-            if all(p is not None for p in (GPoint_X, GPoint_Y)):
-                gas.append(Gas(id=gid, x1=float(GPoint_X), y1=float(GPoint_Y), x2 = None, y2 = None, input=gas_machine))
+            x1 = _f(ws.cell(r, idx("x1") or 0).value)
+            y1 = _f(ws.cell(r, idx("y1") or 0).value)
+            x2 = _f(ws.cell(r, idx("x2") or 0).value)
+            y2 = _f(ws.cell(r, idx("y2") or 0).value)
 
-        elif t == "other":
-            oid = str(raw_id).strip()
-            other_machine = _s(ws.cell(r, idx("input") or 0).value)
-            if other_machine is None:
-                continue
-            o_x1 = _f(ws.cell(r, idx("x1") or 0).value)
-            o_y1 = _f(ws.cell(r, idx("y1") or 0).value)
-            o_x2 = _f(ws.cell(r, idx("x2") or 0).value)
-            o_y2 = _f(ws.cell(r, idx("y2") or 0).value)
-            if all(l is not None for l in (o_x1, o_y1, o_x2, o_y2)):
-                other.append(Other(id=oid, x1=float(o_x1), y1=float(o_y1), x2=float(o_x2), y2=float(o_y2), input=other_machine))
-                #print(other)
-            OPoint_X = _f(ws.cell(r, idx("x") or 0).value)
-            OPoint_Y = _f(ws.cell(r, idx("y") or 0).value)
-            if all(p is not None for p in (OPoint_X, OPoint_Y)):
-                other.append(Other(id=oid, x1=float(OPoint_X), y1=float(OPoint_Y), x2 = None, y2 = None, input=other_machine))
-                #print(other)
-            #print(o_x1, o_y1, o_x2, o_y2, OPoint_X, OPoint_Y)
+            if not all(v is not None for v in (x1, y1)):
+                port_x = _f(ws.cell(r, idx("x") or 0).value)
+                port_y = _f(ws.cell(r, idx("y") or 0).value)
+                if not all(v is not None for v in (port_x, port_y)):
+                    continue
+                x1, y1 = port_x, port_y
+                x2, y2 = None, None
+            
+            utilities.setdefault(kind, []).append(
+                Utility(
+                    kind = kind,
+                    id = uid,
+                    x1 = float(x1),
+                    y1 = float(y1),
+                    x2 = (float(x2) if x2 is not None else None),
+                    y2 = (float(y2) if y2 is not None else None),
+                    input = str(u_machines or "").strip(),
+                )
+            )
 
-    return walls, inputs, outputs, cols, machines, water, gas, other, meta
+    return walls, inputs, outputs, cols, machines, utilities, meta
 
 def apply_excel_layout_to_config(xlsx_path: str, sheet_name: Optional[str] = None) -> Dict[str, Any]:
     wb = load_workbook(xlsx_path, data_only=True)
@@ -539,7 +505,7 @@ def apply_excel_layout_to_config(xlsx_path: str, sheet_name: Optional[str] = Non
         raise ValueError("Workbook hat keine Sheets")
     sheet = sheet_name or wb.sheetnames[0]
 
-    walls, inputs, outputs, cols, machines, water, gas, other, meta = read_layout_from_sheet(xlsx_path, sheet)
+    walls, inputs, outputs, cols, machines, utilities, meta = read_layout_from_sheet(xlsx_path, sheet)
 
     if "grid_size" in meta and _f(meta["grid_size"]) is not None:
         config.GRID_SIZE = float(_f(meta["grid_size"]))
@@ -578,6 +544,9 @@ def apply_excel_layout_to_config(xlsx_path: str, sheet_name: Optional[str] = Non
             y0 = float(y) - float(miny)
         return x0, y0
 
+    config.MACHINE_UTILITIES = {}
+    id_to_idx: Dict[str, int] = {}
+
     if machines:
         config.MACHINE_COUNT = int(len(machines))
         config.MACHINE_LABELS = [m.label for m in machines]
@@ -586,6 +555,7 @@ def apply_excel_layout_to_config(xlsx_path: str, sheet_name: Optional[str] = Non
         n = len(machines)
         # Fixed machines: aligned list (idx == machine idx)
         config.MACHINE_FIXED = [None] * n
+        id_to_idx = {m.id: i for i, m in enumerate(machines)}
 
         for i, m in enumerate(machines):
             # fixed wenn x & y gesetzt (rot optional)
@@ -602,9 +572,7 @@ def apply_excel_layout_to_config(xlsx_path: str, sheet_name: Optional[str] = Non
 
         # Optionale Dinge: Liste n lang, Einträge sind None oder Dict
         config.MACHINE_WORKERS = [None] * n
-        config.MACHINE_WATER = [None] * n
-        config.MACHINE_GAS = [None] * n
-        config.MACHINE_OTHER = [None] * n
+        
 
         for i, m in enumerate(machines):
             #Pflicht-Ports immer setzen
@@ -622,26 +590,28 @@ def apply_excel_layout_to_config(xlsx_path: str, sheet_name: Optional[str] = Non
                     "side_worker": str(m.side_worker).strip(),
                     "offset_worker": float(m.offset_worker),
                 }
-            #Wasser/Gas/Other nur setzen, wenn vollständig vorhanden
-            if m.side_water is not None and m.offset_water is not None:
-                config.MACHINE_WATER[i] = {
-                    "side_water": str(m.side_water).strip(),
-                    "offset_water": float(m.offset_water),
+
+        # Generische Utility-Ports pro Maschine: m.utility_ports ist Dict[kind] -> (side, offset)
+        for i, m in enumerate(machines):
+            ports = getattr(m, "utility_ports", None) or {}
+            for kind, port in ports.items():
+                # port kann Tuple(side, offset) oder Dict sein – beide Fälle robust behandeln
+                if isinstance(port, tuple) and len(port) == 2:
+                    side, offset = port
+                elif isinstance(port, dict):
+                    side, offset = port.get("side"), port.get("offset")
+                else:
+                    continue
+
+                if side in (None, "") or offset is None:
+                    continue
+
+                kind_n = str(kind).strip().lower()
+                config.MACHINE_UTILITIES.setdefault(kind_n, [None] * n)
+                config.MACHINE_UTILITIES[kind_n][i] = {
+                    "side": str(side).strip(),
+                    "offset": float(offset),
                 }
-            #Gas
-            if m.side_gas is not None and m.offset_gas is not None:
-                config.MACHINE_GAS[i] = {
-                    "side_gas": str(m.side_gas).strip(),
-                    "offset_gas": float(m.offset_gas),
-                }
-            #Other
-            if m.side_other is not None and m.offset_other is not None:
-                config.MACHINE_OTHER[i] = {
-                    "side_other": str(m.side_other).strip(),
-                    "offset_other": float(m.offset_other),
-                }
-            #print(f"Machine {m.id} mit Größe ({m.w:.2f}, {m.d:.2f}) und Worker {m.worker} an Seite {m.side_worker} mit Offset {m.offset_worker}")
-        id_to_idx = {m.id: i for i, m in enumerate(machines)}
 
         #WORKER_CONNECTIONS als LOOP pro Worker (Excel-Reihenfolge)
         #Für 2 Maschinen entsteht auch A->B und B->A
@@ -664,7 +634,6 @@ def apply_excel_layout_to_config(xlsx_path: str, sheet_name: Optional[str] = Non
 
         input_obj = inputs[0] if inputs else None
         output_obj = outputs[0] if outputs else None
-
         input_id = str(input_obj.id).strip() if input_obj else None
 
         edges: List[Tuple[Optional[int], Optional[int], float]] = []
@@ -751,57 +720,29 @@ def apply_excel_layout_to_config(xlsx_path: str, sheet_name: Optional[str] = Non
     #======================================================================================
 
     #print(f"Parsed {len(walls)} Walls, {len(cols)} Columns, {len(machines)} Machines, {len(inputs)} Inputs, {len(outputs)} Outputs, {len(water)} Water, {len(gas)} Gas, {len(other)} Other")
-    if water:
-        if water[0].x2 is not None and water[0].y2 is not None:
-            config.WATER_CELL = to_internal_xy(float(water[0].x1), float(water[0].y1)), to_internal_xy(float(water[0].x2), float(water[0].y2))
-        else: 
-            config.WATER_CELL = to_internal_xy(float(water[0].x1), float(water[0].y1)), None
-        Water_obj = water[0] #objekt aus liste holen, da es nur eines geben soll laut excel
+    config.UTILITY_CELLS = {}
+    config.UTILITY_CONNECTIONS = {}
+    config.UTILITY_WEIGHT = {}
 
-        water_edges: List[Tuple[Optional[int], Optional[int]]] = [] 
-        raw_w = str(Water_obj.input or "").strip()
-        w_parts = []
-        w_parts = [p.strip() for p in raw_w.replace(";", ",").split(",") if p.strip()] #input in Liste einteilen (als string) und leere Einträge entfernen
-        for i, w in enumerate(w_parts):
-            if not w:
+    for kind, items in (utilities or {}).items():
+        if not items:
+            continue
+        u = items[0]
+        if u.x2 is not None and u.y2 is not None:
+            cell = to_internal_xy(float(u.x1), float(u.y1)), to_internal_xy(float(u.x2), float(u.y2))
+        else:
+            cell = to_internal_xy(float(u.x1), float(u.y1)), None
+        config.UTILITY_CELLS[kind] = cell
+
+        raw = str(u.input or "").strip()
+        parts = [p.strip() for p in raw.replace(";", ",").split(",") if p.strip()]
+        edges: List[Tuple[Optional[int], Optional[int]]] = []
+        for machine_id in parts:
+            if machine_id not in id_to_idx:
                 continue
-            water_edges.append((int(Water_obj.id), id_to_idx[w])) #Edges für Wasserverbindung erstellen, von Wasserquelle (Water_obj.id) zu Ziel (w) aber als int
-
-    if gas:
-        if gas[0].x2 is not None and gas[0].y2 is not None:
-            config.GAS_CELL = to_internal_xy(float(gas[0].x1), float(gas[0].y1)), to_internal_xy(float(gas[0].x2), float(gas[0].y2))
-        else: 
-            config.GAS_CELL = to_internal_xy(float(gas[0].x1), float(gas[0].y1)), None
-        Gas_obj = gas[0] #objekt aus liste holen, da es nur eines geben soll laut excel
-
-        gas_edges: List[Tuple[Optional[int], Optional[int]]] = [] 
-        raw_g = str(Gas_obj.input or "").strip()
-        g_parts = []
-        g_parts = [p.strip() for p in raw_g.replace(";", ",").split(",") if p.strip()] #input in Liste einteilen (als string) und leere Einträge entfernen
-        for i, g in enumerate(g_parts):
-            if not g:
-                continue
-            gas_edges.append((int(Gas_obj.id), id_to_idx[g])) #Edges für Gasverbindung erstellen, von Gasquelle (Gas_obj.id) zu Ziel (g) aber als int
-
-    if other:
-        if other[0].x2 is not None and other[0].y2 is not None:
-            config.OTHER_CELL = to_internal_xy(float(other[0].x1), float(other[0].y1)), to_internal_xy(float(other[0].x2), float(other[0].y2))
-        else: 
-            config.OTHER_CELL = to_internal_xy(float(other[0].x1), float(other[0].y1)), None
-        Other_obj = other[0] #objekt aus liste holen, da es nur eines geben soll laut excel
-
-        other_edges: List[Tuple[Optional[int], Optional[int]]] = [] 
-        raw_o = str(Other_obj.input or "").strip()
-        o_parts = []
-        o_parts = [p.strip() for p in raw_o.replace(";", ",").split(",") if p.strip()] #input in Liste einteilen (als string) und leere Einträge entfernen
-        for i, o in enumerate(o_parts):
-            if not o:
-                continue
-            other_edges.append((int(Other_obj.id), id_to_idx[o])) #Edges für Otherverbindung erstellen, von Otherquelle (Other_obj.id) zu Ziel (o) aber als int
-
-    config.WATER_CONNECTIONS = water_edges if water else []
-    config.GAS_CONNECTIONS = gas_edges if gas else []
-    config.OTHER_CONNECTIONS = other_edges if other else []
+            edges.append((int(u.id), id_to_idx[machine_id]))
+        config.UTILITY_CONNECTIONS[kind] = edges
+        config.UTILITY_WEIGHT[kind] = 1.0
 
     #======================================================================================
     #====================Hier werden Hindernisse gesetzt===================================

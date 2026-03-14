@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import copy
 import math
+import random
 from typing import Any, Optional
 
 from PyQt6.QtCore import Qt, QPointF, QRectF, pyqtSignal, QSizeF
@@ -24,10 +25,7 @@ from helpers import (
     effective_dims,
     machine_input_point,
     machine_output_point,
-    machine_worker_point,
-    machine_water_point,
-    machine_gas_point,
-    machine_other_point,
+    machine_utility_point,
     normalize_individual,
     is_fixed_machine,
     swap_grid_positions,
@@ -64,6 +62,15 @@ def _draw_arrowhead(
     painter.drawPolygon(poly)
     painter.restore()
 
+def utility_color(kind:str) -> QColor:
+    # kind = str(kind).strip().lower()
+    # h = (abs(hash(kind)) % 360)
+    r = random.randint(0,255)
+    g = random.randint(0,255)
+    b = random.randint(0,255)
+    if r + g + b >= 150:
+        return QColor(r, g, b)
+    return QColor(min(r + 100, 255), min(g + 100, 255), min(b + 100, 255))
 
 class LayoutCanvas(QWidget):
     """Große Ansicht: 1 Layout + geroutete Wege (Material oder Fußweg) + Entry/Exit + Labels
@@ -77,7 +84,6 @@ class LayoutCanvas(QWidget):
         - Modus "Tauschen": zwei Linksklicks auf Maschinen tauschen Positionen + Fitness-Neuberechnung
         - Modus "Bewegen": per pfeil-tasten verschiebens
     """
-
     layout_changed = pyqtSignal(object, float)  # (layout_data, score)
 
     # Margin (Pixel) für Achsenbeschriftung
@@ -491,80 +497,34 @@ class LayoutCanvas(QWidget):
                 work_pen.setWidthF(1.0 / ScaledX)
                 painter.setPen(work_pen)
                 painter.setBrush(QBrush(QColor(232,97,0)))
-                wpt = machine_worker_point(m)
-                if wpt is not None:
-                    wx, wy = wpt
-                    painter.drawEllipse(QPointF(wx, wy), work_r, work_r)
-
-                #=================================================================================
-                #===============Hier werden anschlüsse gezeichnet=================================
-                wpt = machine_water_point(m)
-                if wpt is not None:
+                
+                util_map = getattr(config, "MACHINE_UTILITIES", {}) or {}
+                for kind in sorted(util_map.keys()):
+                    u_point = machine_utility_point(m, kind)
+                    if u_point is None:
+                        continue
                     anschluss_r = 0.1
-                    water_pen = QPen(QColor(0, 0, 0))
-                    water_pen.setWidthF(1.0 / ScaledX)
-                    painter.setPen(water_pen)
-                    painter.setBrush(QBrush(QColor(0, 0, 255)))
-                    wx, wy = wpt
-                    painter.drawEllipse(QPointF(wx, wy), anschluss_r, anschluss_r)
+                    pen = QPen(QColor(0, 0, 0))
+                    pen.setWidthF(1.0 / ScaledX)
+                    painter.setPen(pen)
+                    painter.setBrush(QBrush(utility_color(kind)))
+                    ux, uy = u_point
+                    painter.drawEllipse(QPointF(ux, uy), anschluss_r, anschluss_r)
 
-                gpt = machine_gas_point(m)
-                if gpt is not None:
-                    anschluss_r = 0.1
-                    gas_pen = QPen(QColor(0, 0, 0))
-                    gas_pen.setWidthF(1.0 / ScaledX)
-                    painter.setPen(gas_pen)
-                    painter.setBrush(QBrush(QColor(139,69,19)))
-                    gx, gy = gpt
-                    painter.drawEllipse(QPointF(gx, gy), anschluss_r, anschluss_r)
-
-                opt = machine_other_point(m)
-                if opt is not None:
-                    anschluss_r = 0.1
-                    other_pen = QPen(QColor(0, 0, 0))
-                    other_pen.setWidthF(1.0 / ScaledX)
-                    painter.setPen(other_pen)
-                    painter.setBrush(QBrush(QColor(238,238,0)))
-                    ox, oy = opt
-                    painter.drawEllipse(QPointF(ox, oy), anschluss_r, anschluss_r)
-                #=================================================================================
-                #=================================================================================
-
-        if config.WATER_CELL[0] is not None:
-            pen = QPen(QColor(0, 0, 255))
+        util_cells = getattr(config, "UTILITY_CELLS", {}) or {}
+        for kind, cell_pair in util_cells.items():
+            if not cell_pair or cell_pair[0] is None:
+                continue
+            color = utility_color(kind)
+            pen = QPen(color)
             pen.setWidthF(0.1)
-            if config.WATER_CELL[1] is not None:
-                painter.setBrush(QBrush(QColor(0, 0, 255)))
-                painter.setPen(pen)
-                painter.drawLine(QPointF(config.WATER_CELL[0][0], config.WATER_CELL[0][1]),QPointF(config.WATER_CELL[1][0], config.WATER_CELL[1][1]))
+            painter.setPen(pen)
+            if cell_pair[1] is not None:
+                painter.setBrush(QBrush(color))
+                painter.drawLine(QPointF(cell_pair[0][0], cell_pair[0][1]), QPointF(cell_pair[1][0], cell_pair[1][1]))
             else:
                 painter.setBrush(QBrush(QColor(255, 255, 255)))
-                painter.setPen(pen)
-                painter.drawEllipse(QPointF(config.WATER_CELL[0][0], config.WATER_CELL[0][1]), 0.2, 0.2)
-
-        if config.GAS_CELL[0] is not None:
-            pen = QPen(QColor(139,69,19))
-            pen.setWidthF(0.1)
-            if config.GAS_CELL[1] is not None:
-                painter.setBrush(QBrush(QColor(139,69,19)))
-                painter.setPen(pen)
-                painter.drawLine(QPointF(config.GAS_CELL[0][0], config.GAS_CELL[0][1]), QPointF(config.GAS_CELL[1][0], config.GAS_CELL[1][1]))
-            else:
-                painter.setBrush(QBrush(QColor(255, 255, 255)))
-                painter.setPen(pen)
-                painter.drawEllipse(QPointF(config.GAS_CELL[0][0], config.GAS_CELL[0][1]), 0.2, 0.2)
-
-        if config.OTHER_CELL[0] is not None:      
-            pen = QPen(QColor(238,238,0))
-            pen.setWidthF(0.1)
-            if config.OTHER_CELL[1] is not None:
-                painter.setBrush(QBrush(QColor(238,238,0)))
-                painter.setPen(pen)
-                painter.drawLine(QPointF(config.OTHER_CELL[0][0], config.OTHER_CELL[0][1]), QPointF(config.OTHER_CELL[1][0], config.OTHER_CELL[1][1]))
-            else:
-                painter.setBrush(QBrush(QColor(255, 255, 255)))
-                painter.setPen(pen)
-                painter.drawEllipse(QPointF(config.OTHER_CELL[0][0], config.OTHER_CELL[0][1]), 0.2, 0.2)
+                painter.drawEllipse(QPointF(cell_pair[0][0], cell_pair[0][1]), 0.2, 0.2)
 
         #Routed paths (A*)
         if self.layout_data:
@@ -601,43 +561,22 @@ class LayoutCanvas(QWidget):
                         painter.drawLine(QPointF(xa, ya), QPointF(xb, yb))
 
             elif self.flow_mode == "Anschlüsse":
-
-                pen_w = QPen(QColor(0, 0, 255))
-                pen_w.setWidthF(1.5 / ScaledX)
-                painter.setPen(pen_w)
-                
-                #Wasseranschluss Zeichnen
-                for w in routed.get("water", []):
-                    pts = w.get("pts") or []
-                    if len(pts) < 2:
+                # alle Utility-Typen automatisch zeichnen (alles außer material/worker)
+                for kind, edges in routed.items():
+                    if kind in {"material", "worker"}:
                         continue
-                    w1_x, w1_y = pts[0]
-                    w2_x, w2_y = pts[1]
-                    painter.drawLine(QPointF(w1_x, w1_y), QPointF(w2_x, w2_y))
-
-                #Gasanschluss Zeichnen
-                pen_g = QPen(QColor(139,69,19))
-                pen_g.setWidthF(1.5 / ScaledX)
-                painter.setPen(pen_g)
-                for g in routed.get("gas", []):
-                    pts = g.get("pts") or []
-                    if len(pts) < 2:
-                        continue
-                    g1_x, g1_y = pts[0]
-                    g2_x, g2_y = pts[1]
-                    painter.drawLine(QPointF(g1_x, g1_y), QPointF(g2_x, g2_y))
-
-                #Sonstiger Anschluss Zeichnen
-                pen_o = QPen(QColor(238,238,0))
-                pen_o.setWidthF(1.5 / ScaledX)
-                painter.setPen(pen_o)
-                for o in routed.get("other", []):
-                    pts = o.get("pts") or []
-                    if len(pts) < 2:
-                        continue
-                    o1_x, o1_y = pts[0]
-                    o2_x, o2_y = pts[1]
-                    painter.drawLine(QPointF(o1_x, o1_y), QPointF(o2_x, o2_y))
+                    pen = QPen(utility_color(kind))
+                    pen.setWidthF(1.5 / ScaledX)
+                    painter.setPen(pen)
+                    painter.setBrush(Qt.BrushStyle.NoBrush)
+                    for e in edges:
+                        pts = e.get("pts") or []
+                        if len(pts) < 2:
+                            continue
+                        for i in range(len(pts) - 1):
+                            xa, ya = pts[i]
+                            xb, yb = pts[i + 1]
+                            painter.drawLine(QPointF(xa, ya), QPointF(xb, yb))
                 
             else:
                 pen = QPen(QColor(30, 30, 30))
@@ -809,17 +748,24 @@ class BestDialog(QDialog):
         root = QVBoxLayout(self)
         top = QHBoxLayout()
         Modes = QVBoxLayout()
-        Saves = QVBoxLayout()     
+        Saves = QVBoxLayout()   
+        Excel = QVBoxLayout()  
 
         self.score_label = QLabel(f"Fitness: {float(fitness(self._ga_layout)):.2f}")
 
         self.layout_button = QPushButton("Gespeichertes Ergebniss")
         self.layout_button.setFixedSize(200, 30)
         self.layout_button.clicked.connect(self._toggle_layout)
+        self.layout_button.setEnabled(False)
 
         self.save_button = QPushButton("Layout Speichern")
         self.save_button.setFixedSize(200, 30)
         self.save_button.clicked.connect(self._save_layout)
+
+        self.excel_button = QPushButton("Excel erstellen")
+        self.excel_button.setFixedSize(200, 30)
+        self.excel_button.clicked.connect(self._save_layout)
+        self.excel_button.setEnabled(False)
 
         self.toggle_btn = QPushButton("Materialwege")
         self.toggle_btn.setFixedSize(200, 30)
@@ -830,6 +776,8 @@ class BestDialog(QDialog):
         self.tausch_btn.clicked.connect(self._change_mode)
 
         top.addWidget(self.score_label, 1)
+        Excel.addWidget(self.excel_button)
+        top.addLayout(Excel)
         Saves.addWidget(self.layout_button)
         Saves.addWidget(self.save_button)
         top.addLayout(Saves)
@@ -876,6 +824,7 @@ class BestDialog(QDialog):
         if self.parent() is not None:
             self.parent()._saved_best_layout = copy.deepcopy(self._saved_layout)
         self.layout_button.setEnabled(True)
+        self.excel_button.setEnabled(True)
 
     def _toggle_mode(self) -> None:
         """Wechselt Canvas-Ansicht: Materialfluss <-> Fußweg"""

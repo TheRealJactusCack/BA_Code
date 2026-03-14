@@ -16,11 +16,6 @@ GRID_ROWS = max(1, int(FLOOR_H // GRID_SIZE))
 ENTRY_CELL = (0, 0)
 EXIT_CELL = (0, 5/GRID_SIZE)
 
-WATER_CELL = [(None, None),(None,None)]
-GAS_CELL = [(None, None),(None,None)]
-OTHER_CELL = [(None, None),(None,None)]
-
-
 OVERLAP_PENALTY = 1e9
 OUT_OF_BOUNDS_PENALTY = 1e7
 DIST_SCALE = 1.0
@@ -57,25 +52,21 @@ MACHINE_FIXED = []
 MACHINE_LABELS = []
 MACHINE_PORTS = []
 MACHINE_WORKERS =[]
-MACHINE_WATER = []
-MACHINE_GAS = []
-MACHINE_OTHER = []
+MACHINE_UTILITIES = {} # pro angabe: [kind | {"side": dtr, "offser": float}, ...]
 
 MATERIAL_CONNECTIONS = []
 WORKER_CONNECTIONS = []
-WATER_CONNECTIONS = []
-GAS_CONNECTIONS = []
-OTHER_CONNECTIONS = []
+
+UTILITY_CELLS = {}
+UTILITY_CONNECTIONS = {}
+UTILITY_WEIGHT = {}
 
 MATERIAL_WEIGHT = 1
 WORKER_WEIGHT = 1
-WATER_WEIGHT = 1
-GAS_WEIGHT = 1
-OTHER_WEIGHT = 1
 
 MODUS = "Rotation"  # "Rotation" oder "Tauschen"
 
 CREATE_GROUPS = False
 GROUPS_FOR_GA = []
 GROUP_PHASE = False
-GROUP_BY = "Manhatten" # aktuell: Worker, Manhatten, Anschluss möglich
+GROUP_BY = "Manhatten" # aktuell: Worker, Manhatten möglich
