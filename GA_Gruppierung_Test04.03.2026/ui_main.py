@@ -419,7 +419,6 @@ class MainWindow(QWidget):
             return
         BestDialog(copy.deepcopy(self._last_best_ind), parent=self, title="Beste Lösung (gespeichert)").exec()
 
-    # test
     # Stoppt den GA über ein globales Flag, das in run_ga periodisch geprüft wird
     def _stop(self):
         config.STOP_REQUESTED = True
