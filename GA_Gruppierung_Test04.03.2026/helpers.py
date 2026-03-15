@@ -1275,6 +1275,6 @@ def distance_cost(ind: List[Dict], config: any) -> float:
         w_kind = float(util_weights.get(kind, 1.0))
         for e in edges:
             length = round(float(e["length_m"]), 2)
-            cost += no_path_penalty if not math.isfinite(length) else length * w_kind
+            cost += no_path_penalty if not math.isfinite(length) else length * w_kind * config.All_UTILITY_WEIGHT
 
     return float(cost)

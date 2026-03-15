@@ -63,6 +63,7 @@ UTILITY_WEIGHT = {}
 
 MATERIAL_WEIGHT = 1
 WORKER_WEIGHT = 1
+All_UTILITY_WEIGHT = 1
 
 MODUS = "Rotation"  # "Rotation" oder "Tauschen"
 

@@ -5,12 +5,12 @@ from __future__ import annotations
 
 import pyqtgraph
 from PyQt6.QtCore import (Qt, pyqtSlot)
-from PyQt6.QtGui import QFont
+from PyQt6.QtGui import QFont, QIntValidator
 
 # Qt Widgets für Fenster, Layouts, Controls, Dialoge
 from PyQt6.QtWidgets import (QWidget,QVBoxLayout,QHBoxLayout, QGroupBox, QLabel,
     QPushButton, QSpinBox, QDoubleSpinBox, QMessageBox, QApplication,
-    QFileDialog, QComboBox, QGridLayout,
+    QFileDialog, QComboBox, QGridLayout, QLineEdit
 )
 
 import copy
@@ -81,25 +81,22 @@ class MainWindow(QWidget):
         ga_v = QHBoxLayout(ga_group)
 
         pop_group = QGroupBox()
-        pop_group.setFixedSize(100, 75)
-
+        pop_group.setFixedSize(80, 75)
         elite_group = QGroupBox()
-        elite_group.setFixedSize(100, 75)
-
+        elite_group.setFixedSize(80, 75)
         mut_group = QGroupBox()
-        mut_group.setFixedSize(100, 75)
-
+        mut_group.setFixedSize(80, 75)
         std_group = QGroupBox()
-        std_group.setFixedSize(100, 75)
-
+        std_group.setFixedSize(80, 75)
         rot_group = QGroupBox()
-        rot_group.setFixedSize(100, 75)
-
+        rot_group.setFixedSize(80, 75)
         swap_group = QGroupBox()
-        swap_group.setFixedSize(100, 75)
-
+        swap_group.setFixedSize(80, 75)
         gen_group = QGroupBox()
-        gen_group.setFixedSize(100, 75)
+        gen_group.setFixedSize(80, 75)
+        verhältnis_group = QGroupBox()
+        verhältnis_group.setFixedSize(110, 75)
+
         
         self.population_size_spin = QSpinBox()
         self.population_size_spin.setRange(1, 1000)
@@ -160,6 +157,30 @@ class MainWindow(QWidget):
         gen_group.layout().addWidget(QLabel("Generationen"),alignment=Qt.AlignmentFlag.AlignHCenter)
         gen_group.layout().addWidget(self.generations_spin)        
         ga_v.addWidget(gen_group)
+
+        self.material_edit = QLineEdit()
+        self.material_edit.setValidator(QIntValidator(1, 100))
+        self.material_edit.setText(str(config.MATERIAL_WEIGHT))
+        self.material_edit.setFixedSize(20, 20)
+        self.worker_edit = QLineEdit()
+        self.worker_edit.setValidator(QIntValidator(1, 100))
+        self.worker_edit.setText(str(config.WORKER_WEIGHT))
+        self.worker_edit.setFixedSize(20, 20)
+        self.util_edit = QLineEdit()
+        self.util_edit.setValidator(QIntValidator(1, 100))
+        self.util_edit.setText(str(config.All_UTILITY_WEIGHT))        
+        self.util_edit.setFixedSize(20, 20)
+
+        verhältnis_group.setLayout(QVBoxLayout())
+        verhältnis_group.layout().addWidget(QLabel("M, W, U Verhältnis"),alignment=Qt.AlignmentFlag.AlignHCenter)
+        nebeneinander = QHBoxLayout()
+        nebeneinander.addWidget(self.material_edit)
+        nebeneinander.addWidget(QLabel("zu"),alignment=Qt.AlignmentFlag.AlignHCenter)
+        nebeneinander.addWidget(self.worker_edit)   
+        nebeneinander.addWidget(QLabel("zu"),alignment=Qt.AlignmentFlag.AlignHCenter)
+        nebeneinander.addWidget(self.util_edit)
+        verhältnis_group.layout().addLayout(nebeneinander)          
+        ga_v.addWidget(verhältnis_group)
 
         button_group = QVBoxLayout()
         oben_group = QHBoxLayout()
@@ -334,6 +355,10 @@ class MainWindow(QWidget):
         config.MUTATION_ROT_PROB = float(self.mutation_rot_prob_spin.value())
         config.SWAP_PROB = float(self.mutation_swap_prob_spin.value())
         config.GENERATIONS = int(self.generations_spin.value())
+
+        config.MATERIAL_WEIGHT = int(self.material_edit.text() or "1")
+        config.WORKER_WEIGHT = int(self.worker_edit.text() or "1")
+        config.All_UTILITY_WEIGHT = int(self.util_edit.text() or "1")
 
         self.fitness_Point_X.clear()
         self.fitness_Point_Y.clear()
