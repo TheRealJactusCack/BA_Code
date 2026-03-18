@@ -3,7 +3,7 @@ from __future__ import annotations
 import copy
 import math
 import random
-from typing import Any, Optional
+import hashlib
 
 from PyQt6.QtCore import Qt, QPointF, QRectF, pyqtSignal, QSizeF
 from PyQt6.QtGui import QBrush, QColor, QFont, QPainter, QPen, QPolygonF, QTransform
@@ -17,7 +17,6 @@ from PyQt6.QtWidgets import (
     QWidget, QMessageBox, QCheckBox
 )
 import excel_export
-import ui_main
 import config
 from helpers import (
     cell_center_from_topleft,
@@ -63,14 +62,13 @@ def _draw_arrowhead(
     painter.restore()
 
 def utility_color(kind:str) -> QColor:
-    # kind = str(kind).strip().lower()
-    # h = (abs(hash(kind)) % 360)
-    r = random.randint(0,255)
-    g = random.randint(0,255)
-    b = random.randint(0,255)
-    if r + g + b >= 150:
-        return QColor(r, g, b)
-    return QColor(min(r + 100, 255), min(g + 100, 255), min(b + 100, 255))
+    kind = str(kind).strip().lower()
+    digest = hashlib.md5(kind.encode("utf-8")).digest()
+    hue = digest[0] % 360
+    saturation = 160 + (digest[1] % 80)
+    value = 180 + (digest[2] % 60)
+
+    return QColor.fromHsv(hue, saturation, value)
 
 class LayoutCanvas(QWidget):
     """Große Ansicht: 1 Layout + geroutete Wege (Material oder Fußweg) + Entry/Exit + Labels

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import copy
 import random
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Sequence
 
 import config
 from helpers import (
@@ -312,14 +312,125 @@ def teleport(ind: List[Dict]) -> None:
     if change:
         normalize_individual(ind)
 
-def dynamic_parametrisation():
-    """Dynamische Anpassung der Parameter im verlauf des GAs, abhängig von der verbesserungsrate"""
-    mut_prob = config.MUTATION_PROB
-    rot_prob = config.MUTATION_ROT_PROB
-    swap_prob = config.SWAP_PROB
-    tel_prob = config.TELEPORT_PROB
+#============================================= CHAT CODE ===========================================================
+#============================================= CHAT CODE ===========================================================
+#============================================= CHAT CODE ===========================================================
+def _clamp01(x: float) -> float:
+    return 0.0 if x < 0.0 else 1.0 if x > 1.0 else x
 
-    return
+def _acro_diversity(pop: Sequence[List[Dict]], mode: str = "all", *, sample_pairs: int = 256) -> float:
+    """
+    Diversity-Proxy: mittlere normalisierte Paar-Distanz (L1).
+    mode:
+      - "all": gx, gy, z
+      - "pos": gx, gy
+      - "rot": z
+    """
+    n = len(pop)
+    if n < 2:
+        return 0.0
+
+    cols = max(2, int(getattr(config, "GRID_COLS", 2)))
+    rows = max(2, int(getattr(config, "GRID_ROWS", 2)))
+    gx_den = float(cols - 1)
+    gy_den = float(rows - 1)
+
+    genes: List[List[float]] = []
+    for ind in pop:
+        v: List[float] = []
+        for m in ind:
+            if mode in ("all", "pos"):
+                gx = float(m.get("gx", 0))
+                gy = float(m.get("gy", 0))
+                v.append(_clamp01(gx / gx_den))
+                v.append(_clamp01(gy / gy_den))
+            if mode in ("all", "rot"):
+                z = int(m.get("z", 0)) % 360
+                z_idx = float((z // 90) % 4)
+                v.append(_clamp01(z_idx / 3.0))
+        genes.append(v)
+
+    d = len(genes[0]) if genes else 0
+    if d == 0:
+        return 0.0
+
+    total_pairs = n * (n - 1) // 2
+    used = min(int(sample_pairs), int(total_pairs))
+    if used <= 0:
+        return 0.0
+
+    acc = 0.0
+    for _ in range(used):
+        i = random.randrange(0, n)
+        j = random.randrange(0, n - 1)
+        if j >= i:
+            j += 1
+        gi, gj = genes[i], genes[j]
+        acc += sum(abs(gi[k] - gj[k]) for k in range(d)) / float(d)
+
+    return acc / float(used)
+
+
+def _acro_update_params(pop: Sequence[List[Dict]], scores: Sequence[float]) -> float:
+    """
+    Abgespeckte ACRO-Logik (Fitness + Diversity Feedback), getrennt:
+      - Pc aus Diversity(all)
+      - MUTATION_PROB aus (Fitness + Diversity(pos))
+      - MUTATION_ROT_PROB aus (Fitness + Diversity(rot))
+      - MUTATION_POS_STD aus (Fitness + Diversity(pos))
+    Gibt Pc zurück (für cross_prob im GA-Loop).
+    """    
+    if not pop or not scores:
+        return float(getattr(config, "CROSSOVER_PROB", 0.9))
+
+    # Tunables (kompakt; bei dir ist (1-Pc) effektiv Random-Immigrants)
+    spd_max_all = 0.40
+    spd_max_pos = 0.40
+    spd_max_rot = 0.40
+    pc_min, pc_max = 0.85, 0.98
+    k_mut = 0.50
+
+    spd_all = _acro_diversity(pop, "all")
+    spd_pos = _acro_diversity(pop, "pos")
+    spd_rot = _acro_diversity(pop, "rot")
+
+    spd_ratio_all = _clamp01(spd_all / max(spd_max_all, 1e-9))
+    pc = pc_min + spd_ratio_all * (pc_max - pc_min)
+
+    best = float(min(scores))
+    worst = float(max(scores))
+    denom = max(worst - best, 1e-9)
+    fitness_ratio_avg = sum((float(s) - best) / denom for s in scores) / float(len(scores))  # 0..1
+
+    pf = k_mut * _clamp01(fitness_ratio_avg)  # 0..k_mut
+    pd_pos = k_mut * _clamp01((spd_max_pos - spd_pos) / max(spd_max_pos, 1e-9))  # 0..k_mut
+    pd_rot = k_mut * _clamp01((spd_max_rot - spd_rot) / max(spd_max_rot, 1e-9))  # 0..k_mut
+
+    pm_pos = 0.5 * (pf + pd_pos)  # 0..k_mut
+    pm_rot = 0.5 * (pf + pd_rot)  # 0..k_mut
+    r_pos = pm_pos / max(k_mut, 1e-9)  # 0..1
+    r_rot = pm_rot / max(k_mut, 1e-9)  # 0..1
+
+    min_dim = min(config.GRID_COLS, config.GRID_ROWS)  # 40..160
+    std_min = 1
+    std_max = max(8, round(min_dim * 0.50))  # 40->8, 160->16
+    std_max = min(std_max, 20)               # cap bei 5m
+    print(std_min, std_max)
+    config.MUTATION_POS_STD = int(round(std_min + r_pos * (std_max - std_min)))
+    
+    raw_std = std_min + r_pos * (std_max - std_min)
+    print("r_pos=", r_pos, "raw_std=", raw_std, "std=", int(round(raw_std)))
+    
+    config.CROSSOVER_PROB = _clamp01(pc)
+    config.MUTATION_PROB = _clamp01(0.05 + r_pos * (0.50 - 0.05))
+    config.MUTATION_ROT_PROB = _clamp01(0.02 + r_rot * (0.50 - 0.02))
+
+    print(config.MUTATION_POS_STD)
+    return float(config.CROSSOVER_PROB)
+
+#============================================= CHAT CODE ===========================================================
+#============================================= CHAT CODE ===========================================================
+#============================================= CHAT CODE ===========================================================
 
 def run_ga(generations: int, progress_callback=None) -> Tuple[Optional[List[Dict]], float]:
     from helpers import update_grid_counts
@@ -333,6 +444,7 @@ def run_ga(generations: int, progress_callback=None) -> Tuple[Optional[List[Dict
         best_score: float,
         stagnation_stop: bool,
         ) -> Tuple[Optional[List[Dict]], float, List[List[Dict]]]:
+        nonlocal cross_prob
         ind_swaps: List[bool] = [False for _ in pop]
         stagnated: int = 0
     
@@ -348,6 +460,7 @@ def run_ga(generations: int, progress_callback=None) -> Tuple[Optional[List[Dict
                         progress_callback(g, generations, best_score, best_ind)
                 break
             scores = [fitness(ind) for ind in pop]
+            cross_prob = _acro_update_params(pop, scores)
             paired = list(zip(scores, pop, ind_swaps))
             paired.sort(key=lambda p: p[0])
 
