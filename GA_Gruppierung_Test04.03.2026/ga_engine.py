@@ -447,7 +447,7 @@ def run_ga(generations: int, progress_callback=None) -> Tuple[Optional[List[Dict
     
         for g in range(1, int(generations) + 1):
             #teleport wahrscheinlichkeit kontinuierlich erhöhen
-            config.TELEPORT_PROB += 1 / (generations * 5)
+            config.TELEPORT_PROB = 0.5 #+= 1 / (generations * 5)
 
             if config.STOP_REQUESTED:
                 if progress_callback:

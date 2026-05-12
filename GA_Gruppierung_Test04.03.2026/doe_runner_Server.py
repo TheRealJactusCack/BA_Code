@@ -30,21 +30,14 @@ import config
 from excel_import import apply_excel_layout_to_config
 from ga_engine import run_ga
 
-
-# ------------------------------ DOE model --------------------------------------
-
-
 @dataclass(frozen=True)
 class DOEParam:
-    # Beschreibt einen DOE-Parameter als Bereich (Start/Stop) mit einer Anzahl an Steps
     key: str
     start: float
     stop: float
     steps: int
     kind: str  # "int" or "float"
 
-
-# Erzeugt n gleichmäßig verteilte Werte zwischen a und b (inkl. a und b)
 def _linspace(a: float, b: float, n: int) -> List[float]:
     # Sonderfälle (n<=1 oder a==b) abfangen
     if n <= 1:
@@ -54,16 +47,12 @@ def _linspace(a: float, b: float, n: int) -> List[float]:
     step = (b - a) / (n - 1)
     return [a + i * step for i in range(n)]
 
-
-# Castet DOE-Werte abhängig vom Parametertyp
 def _cast_value(v: float, kind: str) -> Any:
     # Int-Parameter sauber runden, Float unverändert übernehmen
     if kind == "int":
         return int(round(v))
     return float(v)
 
-
-# Baut alle DOE-Designpunkte (Full-Factorial)
 def _design_points(params: Sequence[DOEParam]) -> List[Dict[str, Any]]:
     # Pro Parameter eine Werteliste bauen und dann kartesisches Produkt bilden
     grids: List[List[Any]] = []
@@ -77,9 +66,7 @@ def _design_points(params: Sequence[DOEParam]) -> List[Dict[str, Any]]:
         points.append({k: combo[i] for i, k in enumerate(keys)})
     return points
 
-
 # ------------------------------ Config helpers ---------------------------------
-
 
 def _set_config_value(key: str, value: Any) -> None:
     # Setzt config.<key> (mit Fallback SWAP_PROP -> SWAP_PROB) ohne config.py zu ändern
@@ -157,12 +144,10 @@ def _unique_sheet_name(wb, base: str) -> str:
 
 
 def _append_results_to_workbook(out_path: Path, headers: List[str], rows: List[List[Any]]) -> Path:
-    # Öffnet/erstellt Auswertung.xlsx und schreibt Ergebnisse in ein neues Sheet
     if out_path.exists():
         wb = load_workbook(out_path)
     else:
         wb = Workbook()
-        # Default-Sheet entfernen, damit nur unsere Sheets drin sind
         if wb.active and len(wb.sheetnames) == 1:
             wb.remove(wb.active)
 
@@ -182,66 +167,48 @@ def _append_results_to_workbook(out_path: Path, headers: List[str], rows: List[L
 
 
 def main() -> int:
-    # Pfade relativ zur Datei auflösen (VM/headless)
     here = Path(__file__).resolve().parent
     layout_xlsx = here / "layouts_with_machines.xlsx"
     out_xlsx = here / "Auswertung.xlsx"
     sheet_name = "Ideal_komplex"
     config.GRID_SIZE = 0.5
 
-    # Layout aus Excel in config übernehmen
     apply_excel_layout_to_config(str(layout_xlsx), sheet_name=sheet_name)
 
-    # DOE-Parameter hier festlegen (statt UI)
+    # DOE-Parameter hier festlegen (keine UI)
     params: List[DOEParam] = [
-        DOEParam(key = "SWAP_PROP", start = 0.1, stop = 0.4, steps = 4, kind = "float"),
-        DOEParam(key = "MUTATION_PROB", start = 0.1, stop = 0.4, steps = 4, kind = "float"),
-        DOEParam(key = "MUTATION_POS_STD", start = 1, stop = 4, steps = 4, kind = "int"),
-        DOEParam(key = "MUTATION_ROT_PROB", start = 0.1, stop = 0.4, steps = 4, kind = "float"),
+        DOEParam(key = "ELITE_KEEP", start = 2, stop = 10, steps = 4, kind = "int"),
+        DOEParam(key = "POPULATION_SIZE", start = 10, stop = 100, steps = 4, kind = "int"),
     ]
 
-    # Alle Designpunkte erzeugen (Full-Factorial)
     points = _design_points(params)
     if not points:
         raise RuntimeError("Keine Design-Punkte erzeugt (params leer?)")
 
-    # Ergebnisse sammeln (für Excel-Export)
     headers = ["Run","Layout", "BestScore"] + [p.key for p in params]
     rows: List[List[Any]] = []
 
-    # Progressbar initialisieren
     started_at = time.time()
     total_runs = len(points)
     _print_progress(0, total_runs, started_at)
 
-    # DOE Runs sequentiell ausführen (ohne UI)
     for run_idx, point in enumerate(points, start=1):
-        # Pro Run DOE-Parameter in config setzen
         for k, v in point.items():
             _set_config_value(k, v)
 
-        # Pro Run Stop-Flag zurücksetzen
         config.STOP_REQUESTED = False
 
-        # GA laufen lassen (Generationen je Run aus config lesen)
         generations = int(_get_config_value("GENERATIONS") or config.GENERATIONS)
         best_ind, best_score = run_ga(generations, progress_callback=None)
-
-        # Score robust behandeln, falls GA kein Ergebnis liefert
         score = float(best_score) if best_ind is not None else float("inf")
 
-        # Ergebniszeile bauen
         row = [run_idx, sheet_name, score] + [point.get(p.key) for p in params]
         rows.append(row)
 
-        # Progressbar updaten
         _print_progress(run_idx, total_runs, started_at)
 
-    # Ergebnisse in Auswertung.xlsx in ein neues Sheet schreiben
     _append_results_to_workbook(out_xlsx, headers=headers, rows=rows)
-
     return 0
-
 
 if __name__ == "__main__":
     raise SystemExit(main())

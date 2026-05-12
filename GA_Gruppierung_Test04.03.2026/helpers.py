@@ -496,11 +496,8 @@ def random_machine_nonoverlap(idx: int, occupied_set: set[Tuple[int, int]], max_
             "h_cells": int(h_cells),
         }
     z = random.choice(config.ROTATIONS)
-    # helpers.py (innerhalb random_machine_nonoverlap)
 
     w_eff, h_eff = effective_dims((w_cells, h_cells), z)
-    # Für die Randbegrenzung müssen wir die gepufferte Fläche berücksichtigen,
-    # sonst würde die echte Maschine zwar im Grid liegen, aber der "Laufweg" ragt raus.
 
     max_col = max(0, config.GRID_COLS - int(w_eff))
     max_row = max(0, config.GRID_ROWS - int(h_eff))
@@ -509,9 +506,6 @@ def random_machine_nonoverlap(idx: int, occupied_set: set[Tuple[int, int]], max_
         col = random.randint(0, max_col)
         row = random.randint(0, max_row)
 
-        # Testet die gepufferte Fläche: top-left um p nach außen verschieben
-        # Wichtig: gx/gy bleiben die echten Maschinen-zellen (ohne Puffer),
-        # damit Center/Ports/Zeichnung korrekt bleiben.
         if can_place_at(col, row, w_eff, h_eff, occupied_set):
             gx = int(col)
             gy = int(row)
@@ -528,7 +522,7 @@ def random_machine_nonoverlap(idx: int, occupied_set: set[Tuple[int, int]], max_
                 "h_cells": int(h_cells),
             }
 
-    # Fallback (wenn keine Platzierung gefunden)
+    #Fallback (wenn keine Platzierung gefunden)
     col = random.randint(0, max_col)
     row = random.randint(0, max_row)
 
@@ -669,7 +663,7 @@ def port_world_xy(
         x_local = round(round((-w0 / 2), 2) + off, 2)
         y_local = round((-d0 / 2), 2) if side_n == "top" else round((d0 / 2), 2)
 
-    # Exakte Rotation die auf sin und cos verzichtet:
+    #Exakte Rotation (keine trig funktionen)
     if rot == 0:
         x_rot, y_rot = x_local, y_local
     elif rot == 90:
@@ -700,7 +694,6 @@ def _rotated_side(side: str, rotation_deg: int) -> str:
 
 #=============================================================================================
 #=========================0= Anfang der Port berechnung ======================================
-#5 Funktionen für 6 Ports (dumm und entstanden durch das nacheinander hinzufügen der Ports) ==
 
 _PT_CACHE_KEY = "__pt_cache"
 
@@ -1014,7 +1007,7 @@ def AStar_Worker_Path(
 
     return None
 
-# Checken ob sinn macht da gleicher input und gleicher output nicht heißt dass keine maschine dazwischen steht
+#Checken ob sinn macht da gleicher input und gleicher output nicht heißt dass keine maschine dazwischen steht
 
 def _astar_path_cached(blocked_sig: int, start: Tuple[int, int], goal: Tuple[int, int], blocked: set[Tuple[int, int]]) -> Optional[List[Tuple[int, int]]]:
     """A* mit LRU-Cache: gleiche Inputs -> gleicher Output, ohne Neuberechnung"""
@@ -1254,7 +1247,6 @@ def distance_cost(ind: List[Dict], config: any) -> float:
     - Laufweg Zellen bleiben verwendbar für Fluss und laufweg
     - Entry/Exit remain walkable even if they are in OBSTACLES
     - keine kollision zwischen flows 
-    - Uses a small LRU cache for A* results (speed-up during GA)?????
     """
     routed = compute_routed_edges(ind)
     no_path_penalty = float(getattr(config, "NO_PATH_PENALTY", 1e6))

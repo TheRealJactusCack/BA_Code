@@ -1,5 +1,3 @@
-# EXCEL IMPORT MODULE
-
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -549,6 +547,7 @@ def apply_excel_layout_to_config(xlsx_path: str, sheet_name: Optional[str] = Non
 
     if machines:
         config.MACHINE_COUNT = int(len(machines))
+        config.MACHINE_IDS = [m.id for m in machines]
         config.MACHINE_LABELS = [m.label for m in machines]
         config.MACHINE_SIZES = [(max(0.1, m.w), max(0.1, m.d)) for m in machines]
         
@@ -699,10 +698,13 @@ def apply_excel_layout_to_config(xlsx_path: str, sheet_name: Optional[str] = Non
                 #print(f"Verbindung {machines[t].id} -> {output_obj.id} (exit, auto)")
         config.MATERIAL_CONNECTIONS = edges
     else:
+        config.MACHINE_IDS = []
         config.MACHINE_PORTS = []
         config.MATERIAL_CONNECTIONS = []
 
     if inputs and outputs:
+        config.INPUT_ID = str(inputs[0].id).strip()
+        config.OUTPUT_ID = str(outputs[0].id).strip()
         first_input = inputs[0]
         ix_w, iy_w = to_internal_xy(float(first_input.x), float(first_input.y))
 
@@ -714,6 +716,9 @@ def apply_excel_layout_to_config(xlsx_path: str, sheet_name: Optional[str] = Non
         # ENTRY_CELL/EXIT_CELL sind Rasterzellen (col,row), nicht Meter.
         config.ENTRY_CELL = (ix_w / gs, iy_w / gs)
         config.EXIT_CELL = (ox_w / gs, oy_w / gs)
+    else:
+        config.INPUT_ID = ""
+        config.OUTPUT_ID = ""
 
     #======================================================================================
     #====================Hier wird Wasser, gas und other zu wegen gemacht==================

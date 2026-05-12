@@ -24,6 +24,7 @@ from helpers import (
     effective_dims,
     machine_input_point,
     machine_output_point,
+    machine_worker_point,
     machine_utility_point,
     normalize_individual,
     is_fixed_machine,
@@ -482,19 +483,27 @@ class LayoutCanvas(QWidget):
                     painter.drawRect(rect)
 
 
-                MaschineLabel = str(m.get("label",None))
-                if MaschineLabel is None or MaschineLabel == "":
-                        MaschineLabel = str(int(m.get("idx", None)) + 1)
+                MaschineLabel = m.get("label", "")
+                if MaschineLabel is None or str(MaschineLabel).strip() == "":
+                    MaschineLabel = str(int(m.get("idx", 0)) + 1)
+                else:
+                    MaschineLabel = str(MaschineLabel)
                 labels.append((float(m["x"]), float(m["y"]), MaschineLabel))
 
                 painter.restore()
 
                 #Worker dot (world coords)
-                work_r = 0.2
-                work_pen = QPen(QColor(0, 0, 0))
-                work_pen.setWidthF(1.0 / ScaledX)
-                painter.setPen(work_pen)
-                painter.setBrush(QBrush(QColor(232,97,0)))
+                # Worker dot (world coords)
+                work_point = machine_worker_point(m)
+                if work_point is not None:
+                    work_r = 0.12
+                    work_pen = QPen(QColor(0, 0, 0))
+                    work_pen.setWidthF(1.0 / ScaledX)
+                    painter.setPen(work_pen)
+                    painter.setBrush(QBrush(QColor(232, 97, 0)))
+
+                    wx, wy = work_point
+                    painter.drawEllipse(QPointF(wx, wy), work_r, work_r)
                 
                 util_map = getattr(config, "MACHINE_UTILITIES", {}) or {}
                 for kind in sorted(util_map.keys()):
@@ -623,7 +632,21 @@ class LayoutCanvas(QWidget):
             for xw, yw, text in labels:
                 px = FacilityCenterX + xw * FacilityScale
                 py = FacilityCenterY + yw * FacilityScale
-                r = QRectF(px - 18, py - 10, 36, 20)
+
+                fm = painter.fontMetrics()
+                text_w = fm.horizontalAdvance(text)
+                text_h = fm.height()
+
+                padding_x = 6
+                padding_y = 2
+
+                r = QRectF(
+                    px - text_w / 2 - padding_x,
+                    py - text_h / 2 - padding_y,
+                    text_w + 2 * padding_x,
+                    text_h + 2 * padding_y
+                )
+
                 painter.drawText(r, int(Qt.AlignmentFlag.AlignCenter), text)
 
         # Axes (diagram style)

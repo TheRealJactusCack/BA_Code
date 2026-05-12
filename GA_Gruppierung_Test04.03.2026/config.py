@@ -53,6 +53,8 @@ MACHINE_LABELS = []
 MACHINE_PORTS = []
 MACHINE_WORKERS =[]
 MACHINE_UTILITIES = {} # pro angabe: [kind | {"side": dtr, "offser": float}, ...]
+INPUT_ID = ""
+OUTPUT_ID = ""
 
 MATERIAL_CONNECTIONS = []
 WORKER_CONNECTIONS = []
@@ -70,4 +72,4 @@ MODUS = "Rotation"  # "Rotation" oder "Tauschen"
 CREATE_GROUPS = False
 GROUPS_FOR_GA = []
 GROUP_PHASE = False
-GROUP_BY = "Manhatten" # aktuell: Worker, Manhatten möglich
+GROUP_BY = "Worker" # aktuell: Worker, Manhatten möglich
