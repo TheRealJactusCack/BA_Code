@@ -192,7 +192,6 @@ def _placement_ok(
 
 def mutate(ind: List[Dict]) -> None:
     """Mutation im Raster
-
     - Position und Rotation haben eigene Wahrscheinlichkeiten
     - Feste Maschinen werden ignoriert
     - In der Gruppen-Phase werden Member ignoriert
@@ -225,6 +224,8 @@ def mutate(ind: List[Dict]) -> None:
         if do_pos:
             new_col += random.randint(-config.MUTATION_POS_STD, config.MUTATION_POS_STD)
             new_row += random.randint(-config.MUTATION_POS_STD, config.MUTATION_POS_STD)
+            # new_col += random.randint(-1, 1)
+            # new_row += random.randint(-1, 1)
 
         if do_rot:
             new_z = new_z + 90 * random.choice([1,2,3]) % 360
@@ -259,7 +260,6 @@ def mutate(ind: List[Dict]) -> None:
 
 def teleport(ind: List[Dict]) -> None:
     """Mutation im Raster
-
     - Position und Rotation haben eigene Wahrscheinlichkeiten
     - Feste Maschinen werden ignoriert
     - In der Gruppen-Phase werden Member ignoriert
@@ -312,9 +312,9 @@ def teleport(ind: List[Dict]) -> None:
     if change:
         normalize_individual(ind)
 
-#============================================= CHAT CODE ===========================================================
-#============================================= CHAT CODE ===========================================================
-#============================================= CHAT CODE ===========================================================
+#========================================================================================================
+#========================================================================================================
+
 def _clamp01(x: float) -> float:
     return 0.0 if x < 0.0 else 1.0 if x > 1.0 else x
 
@@ -383,7 +383,6 @@ def _acro_update_params(pop: Sequence[List[Dict]], scores: Sequence[float]) -> f
     if not pop or not scores:
         return float(getattr(config, "CROSSOVER_PROB", 0.9))
 
-    # Tunables (kompakt; bei dir ist (1-Pc) effektiv Random-Immigrants)
     spd_max_all = 0.40
     spd_max_pos = 0.40
     spd_max_rot = 0.40
@@ -415,22 +414,20 @@ def _acro_update_params(pop: Sequence[List[Dict]], scores: Sequence[float]) -> f
     std_min = 1
     std_max = max(8, round(min_dim * 0.50))  # 40->8, 160->16
     std_max = min(std_max, 20)               # cap bei 5m
-    print(std_min, std_max)
     config.MUTATION_POS_STD = int(round(std_min + r_pos * (std_max - std_min)))
     
     raw_std = std_min + r_pos * (std_max - std_min)
-    print("r_pos=", r_pos, "raw_std=", raw_std, "std=", int(round(raw_std)))
     
     config.CROSSOVER_PROB = _clamp01(pc)
     config.MUTATION_PROB = _clamp01(0.05 + r_pos * (0.50 - 0.05))
     config.MUTATION_ROT_PROB = _clamp01(0.02 + r_rot * (0.50 - 0.02))
+    print(f"ACRO Update: Pc={config.CROSSOVER_PROB:.3f}, PM={config.MUTATION_PROB:.3f}, PM_rot={config.MUTATION_ROT_PROB:.3f}, MUT_STD={config.MUTATION_POS_STD}, SPD_all={spd_all:.3f}, SPD_pos={spd_pos:.3f}, SPD_rot={spd_rot:.3f}") 
 
-    print(config.MUTATION_POS_STD)
     return float(config.CROSSOVER_PROB)
 
-#============================================= CHAT CODE ===========================================================
-#============================================= CHAT CODE ===========================================================
-#============================================= CHAT CODE ===========================================================
+#========================================================================================================
+#========================================================================================================
+#========================================================================================================
 
 def run_ga(generations: int, progress_callback=None) -> Tuple[Optional[List[Dict]], float]:
     from helpers import update_grid_counts
@@ -459,14 +456,21 @@ def run_ga(generations: int, progress_callback=None) -> Tuple[Optional[List[Dict
                     except TypeError:
                         progress_callback(g, generations, best_score, best_ind)
                 break
-            scores = [fitness(ind) for ind in pop]
-            cross_prob = _acro_update_params(pop, scores)
+            scores = [fitness(ind) for ind in pop] #10
+            cross_prob =  _acro_update_params(pop, scores)
             paired = list(zip(scores, pop, ind_swaps))
             paired.sort(key=lambda p: p[0])
+
+
+            #==========================================================================
+            #Hier alternative Auswahlstrategie implementieren und testen
 
             EliteKeep = int(config.ELITE_KEEP)
             elites = [p[1] for p in paired[:EliteKeep]]
             elite_scores = [p[0] for p in paired[:EliteKeep]]
+
+            #==========================================================================
+
 
             SwapStateBestThisGen = bool(paired[0][2]) if paired else False
             ImprovedThisGen = bool(elite_scores) and elite_scores[0] < best_score
