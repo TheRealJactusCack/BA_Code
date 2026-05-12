@@ -33,6 +33,15 @@ def Create_Groups(BestIndCopy: List[Dict]) -> List[Optional[List[Optional[int]]]
     elif config.GROUP_BY == "Manhatten":
         Machine_Distances: List[List[float]] = List_Machine_Distance(BestIndCopy)
         Gruppen = minimum_weight_perfect_matching(Machine_Distances)
+    elif config.GROUP_BY == "Flow":
+        #!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! NICHT FERTIG!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+        Connections = getattr(config, "MATERIAL_CONNECTIONS", [])
+        for Index1, Index2, _ in Connections: 
+            if Index1 is None:
+                continue
+            if Index2 is None:
+                continue
+
     return Gruppen
 
 def List_Machine_Points(BestIndCopy: List[Dict]) -> List[Tuple[float, float]]:

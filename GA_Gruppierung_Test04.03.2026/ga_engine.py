@@ -371,63 +371,147 @@ def _acro_diversity(pop: Sequence[List[Dict]], mode: str = "all", *, sample_pair
     return acc / float(used)
 
 
-def _acro_update_params(pop: Sequence[List[Dict]], scores: Sequence[float]) -> float:
-    """
-    Abgespeckte ACRO-Logik (Fitness + Diversity Feedback), getrennt:
-      - Pc aus Diversity(all)
-      - MUTATION_PROB aus (Fitness + Diversity(pos))
-      - MUTATION_ROT_PROB aus (Fitness + Diversity(rot))
-      - MUTATION_POS_STD aus (Fitness + Diversity(pos))
-    Gibt Pc zurück (für cross_prob im GA-Loop).
-    """    
-    if not pop or not scores:
-        return float(getattr(config, "CROSSOVER_PROB", 0.9))
+def _smooth_value(old: float, target: float, alpha: float = 0.25) -> float:
+    """Dämpft Parametersprünge zwischen zwei Generationen."""
+    return float(old) + float(alpha) * (float(target) - float(old))
 
-    spd_max_all = 0.40
-    spd_max_pos = 0.40
-    spd_max_rot = 0.40
-    pc_min, pc_max = 0.85, 0.98
-    k_mut = 0.50
+
+def _quality_update_params(
+    pop: Sequence[List[Dict]],
+    scores: Sequence[float],
+    generation: int,
+    max_generations: int,
+    stagnated: int,
+) -> float:
+    """Qualitätsorientierte dynamische Parametrisierung.
+
+    Grundidee:
+    - Gute Layoutstrukturen werden geschützt. Deshalb bleiben Rotation und
+      Teleportation niedrig.
+    - Die Positionsmutation wird im Verlauf abgekühlt und nur bei echter
+      Stagnation leicht angehoben.
+    - Teleportation ist kein Standardoperator, sondern ein seltener
+      Diversitätsimpuls bei niedriger Positionsdiversität und Stagnation.
+    """
+    if not pop or not scores:
+        return float(getattr(config, "CROSSOVER_PROB", 0.85))
+
+    progress = _clamp01((int(generation) - 1) / max(int(max_generations) - 1, 1))
+    exploration = 1.0 - progress
 
     spd_all = _acro_diversity(pop, "all")
     spd_pos = _acro_diversity(pop, "pos")
     spd_rot = _acro_diversity(pop, "rot")
 
-    spd_ratio_all = _clamp01(spd_all / max(spd_max_all, 1e-9))
-    pc = pc_min + spd_ratio_all * (pc_max - pc_min)
+    # Für Layoutprobleme ist Positionsdiversität wichtiger als reine Rotationsdiversität.
+    low_pos_div = _clamp01((0.22 - spd_pos) / 0.22)
+    low_all_div = _clamp01((0.24 - spd_all) / 0.24)
+    low_rot_div = _clamp01((0.18 - spd_rot) / 0.18)
+    stagnation_factor = _clamp01(float(stagnated) / 25.0)
 
-    best = float(min(scores))
-    worst = float(max(scores))
-    denom = max(worst - best, 1e-9)
-    fitness_ratio_avg = sum((float(s) - best) / denom for s in scores) / float(len(scores))  # 0..1
+    base_pc = float(getattr(config, "BASE_CROSSOVER_PROB", 0.85))
+    base_pm = float(getattr(config, "BASE_MUTATION_PROB", 0.12))
+    base_rot = float(getattr(config, "BASE_MUTATION_ROT_PROB", 0.04))
+    base_swap = float(getattr(config, "BASE_SWAP_PROB", 0.04))
 
-    pf = k_mut * _clamp01(fitness_ratio_avg)  # 0..k_mut
-    pd_pos = k_mut * _clamp01((spd_max_pos - spd_pos) / max(spd_max_pos, 1e-9))  # 0..k_mut
-    pd_rot = k_mut * _clamp01((spd_max_rot - spd_rot) / max(spd_max_rot, 1e-9))  # 0..k_mut
+    # Crossover bleibt hoch, aber nicht maximal. Bei sehr geringer Diversität
+    # wird er minimal gesenkt, damit nicht nur ähnliche Eltern rekombiniert werden.
+    pc_target = base_pc + 0.06 * exploration - 0.04 * low_all_div
+    pc_target = max(0.72, min(0.92, pc_target))
 
-    pm_pos = 0.5 * (pf + pd_pos)  # 0..k_mut
-    pm_rot = 0.5 * (pf + pd_rot)  # 0..k_mut
-    r_pos = pm_pos / max(k_mut, 1e-9)  # 0..1
-    r_rot = pm_rot / max(k_mut, 1e-9)  # 0..1
+    # Positionsmutation: am Anfang moderat, später klein. Bei Stagnation und
+    # geringer Positionsdiversität wird sie leicht angehoben, aber begrenzt.
+    pm_target = (
+        0.04
+        + 0.08 * exploration
+        + 0.04 * low_pos_div
+        + 0.04 * stagnation_factor
+    )
+    pm_target = max(0.03, min(0.18, max(pm_target, min(base_pm, 0.12))))
 
-    min_dim = min(config.GRID_COLS, config.GRID_ROWS)  # 40..160
-    std_min = 1
-    std_max = max(8, round(min_dim * 0.50))  # 40->8, 160->16
-    std_max = min(std_max, 20)               # cap bei 5m
-    config.MUTATION_POS_STD = int(round(std_min + r_pos * (std_max - std_min)))
-    
-    raw_std = std_min + r_pos * (std_max - std_min)
-    
-    config.CROSSOVER_PROB = _clamp01(pc)
-    config.MUTATION_PROB = _clamp01(0.05 + r_pos * (0.50 - 0.05))
-    config.MUTATION_ROT_PROB = _clamp01(0.02 + r_rot * (0.50 - 0.02))
-    print(f"ACRO Update: Pc={config.CROSSOVER_PROB:.3f}, PM={config.MUTATION_PROB:.3f}, PM_rot={config.MUTATION_ROT_PROB:.3f}, MUT_STD={config.MUTATION_POS_STD}, SPD_all={spd_all:.3f}, SPD_pos={spd_pos:.3f}, SPD_rot={spd_rot:.3f}") 
+    # Rotation ist stark destruktiv für Maschinenlayouts. Deshalb deutlich
+    # niedriger als Positionsmutation und nur leicht reaktiv.
+    rot_target = (
+        0.005
+        + 0.025 * exploration
+        + 0.015 * low_rot_div
+        + 0.010 * stagnation_factor
+    )
+    rot_target = max(0.005, min(0.06, min(rot_target, max(base_rot, 0.02))))
+
+    # Schrittweite: frühe Suche darf gröber sein, später wird lokal optimiert.
+    min_dim = max(1, min(int(config.GRID_COLS), int(config.GRID_ROWS)))
+    std_max_start = min(max(2, round(min_dim * 0.12)), 6)
+    std_target = 1 + int(round(exploration * (std_max_start - 1)))
+    if stagnation_factor > 0.55 and low_pos_div > 0.50:
+        std_target = min(std_target + 1, std_max_start)
+    std_target = max(1, int(std_target))
+
+    # Swap kann bei Layoutproblemen nützlich sein, darf aber nicht dauernd
+    # komplette Nachbarschaften zerreißen.
+    swap_target = base_swap + 0.03 * stagnation_factor * low_pos_div
+    swap_target = max(0.01, min(0.08, swap_target))
+
+    # Teleportation nur als Notfallimpuls. Wichtig: Die Wahrscheinlichkeit
+    # wirkt pro Maschine, deshalb sind selbst 0.02 bereits deutlich spürbar.
+    if stagnated >= 12 and spd_pos < 0.16:
+        teleport_target = 0.004 + 0.016 * stagnation_factor * low_pos_div
+    else:
+        teleport_target = 0.0
+    teleport_target = max(0.0, min(0.02, teleport_target))
+
+    config.CROSSOVER_PROB = _clamp01(_smooth_value(float(config.CROSSOVER_PROB), pc_target, 0.25))
+    config.MUTATION_PROB = _clamp01(_smooth_value(float(config.MUTATION_PROB), pm_target, 0.25))
+    config.MUTATION_ROT_PROB = _clamp01(_smooth_value(float(config.MUTATION_ROT_PROB), rot_target, 0.25))
+    config.SWAP_PROB = _clamp01(_smooth_value(float(config.SWAP_PROB), swap_target, 0.20))
+    config.TELEPORT_PROB = _clamp01(_smooth_value(float(config.TELEPORT_PROB), teleport_target, 0.20))
+    config.MUTATION_POS_STD = int(round(_smooth_value(float(config.MUTATION_POS_STD), float(std_target), 0.35)))
+    config.MUTATION_POS_STD = max(1, int(config.MUTATION_POS_STD))
+
+    print(
+        f"Adaptive Update: Gen={generation}/{max_generations}, progress={progress:.3f}, "
+        f"Pc={config.CROSSOVER_PROB:.3f}, PM={config.MUTATION_PROB:.3f}, "
+        f"PM_rot={config.MUTATION_ROT_PROB:.3f}, MUT_STD={config.MUTATION_POS_STD}, "
+        f"SWAP={config.SWAP_PROB:.3f}, TP={config.TELEPORT_PROB:.3f}, "
+        f"stagnated={stagnated}, SPD_all={spd_all:.3f}, "
+        f"SPD_pos={spd_pos:.3f}, SPD_rot={spd_rot:.3f}"
+    )
 
     return float(config.CROSSOVER_PROB)
 
 #========================================================================================================
+
+
+
+#=======================================Tournament Selection============================================
+def _tournament_select(
+    pop: Sequence[List[Dict]],
+    scores: Sequence[float],
+    *,
+    tournament_size: int = 3,
+) -> List[Dict]:
+    """Wählt ein Elternindividuum über Tournament Selection aus."""
+    n = len(pop)
+    if n == 0:
+        raise ValueError("Tournament Selection benötigt eine nicht leere Population")
+
+    k = max(1, min(int(tournament_size), n))
+    candidates = random.sample(range(n), k)
+    best_idx = min(candidates, key=lambda i: float(scores[i]))
+    return copy.deepcopy(pop[best_idx])
+
+
+def _dynamic_tournament_size(generation: int, max_generations: int) -> int:
+    """Erhöht den Selektionsdruck leicht im Verlauf der Optimierung."""
+    progress = _clamp01((int(generation) - 1) / max(int(max_generations) - 1, 1))
+    if progress < 0.50:
+        return 2
+    if progress < 0.85:
+        return 3
+    return 4
 #========================================================================================================
-#========================================================================================================
+
+
 
 def run_ga(generations: int, progress_callback=None) -> Tuple[Optional[List[Dict]], float]:
     from helpers import update_grid_counts
@@ -446,9 +530,6 @@ def run_ga(generations: int, progress_callback=None) -> Tuple[Optional[List[Dict
         stagnated: int = 0
     
         for g in range(1, int(generations) + 1):
-            #teleport wahrscheinlichkeit kontinuierlich erhöhen
-            config.TELEPORT_PROB = 0.5 #+= 1 / (generations * 5)
-
             if config.STOP_REQUESTED:
                 if progress_callback:
                     try:
@@ -457,28 +538,29 @@ def run_ga(generations: int, progress_callback=None) -> Tuple[Optional[List[Dict
                         progress_callback(g, generations, best_score, best_ind)
                 break
             scores = [fitness(ind) for ind in pop] #10
-            cross_prob =  _acro_update_params(pop, scores)
+            cross_prob = _quality_update_params(pop, scores, g, generations, stagnated)
             paired = list(zip(scores, pop, ind_swaps))
             paired.sort(key=lambda p: p[0])
 
 
             #==========================================================================
-            #Hier alternative Auswahlstrategie implementieren und testen
+            # Elternauswahl über Tournament Selection. Das beste Individuum wird zusätzlich
+            # einmal direkt übernommen, damit die bisher beste Lösung nicht verloren geht.
 
-            EliteKeep = int(config.ELITE_KEEP)
-            elites = [p[1] for p in paired[:EliteKeep]]
-            elite_scores = [p[0] for p in paired[:EliteKeep]]
+            best_this_gen_score = float(paired[0][0])
+            best_this_gen_ind = paired[0][1]
+            tournament_size = _dynamic_tournament_size(g, generations)
 
             #==========================================================================
 
 
             SwapStateBestThisGen = bool(paired[0][2]) if paired else False
-            ImprovedThisGen = bool(elite_scores) and elite_scores[0] < best_score
+            ImprovedThisGen = best_this_gen_score < best_score
             SwapImproved = ImprovedThisGen and SwapStateBestThisGen
             old_best_score = best_score
             if ImprovedThisGen:
-                best_score = float(elite_scores[0])
-                best_ind = copy.deepcopy(elites[0])
+                best_score = float(best_this_gen_score)
+                best_ind = copy.deepcopy(best_this_gen_ind)
                 stagnated = 0
             elif stagnation_stop and old_best_score == best_score:
                 stagnated += 1
@@ -489,8 +571,12 @@ def run_ga(generations: int, progress_callback=None) -> Tuple[Optional[List[Dict
             
             new_pop: List[List[Dict]] = []
             NewSwaps: List[bool] = []
-            new_pop.extend(elites)
-            NewSwaps.extend([False] * len(elites))
+            # Qualitätsorientierter Elitismus: mehrere gute Individuen werden
+            # unverändert übernommen und nicht mutiert, rotiert oder teleportiert.
+            elite_count = max(1, min(int(getattr(config, "ELITE_KEEP", 1)), int(config.POPULATION_SIZE), len(paired)))
+            for _, elite_ind, _ in paired[:elite_count]:
+                new_pop.append(copy.deepcopy(elite_ind))
+                NewSwaps.append(False)
 
             while len(new_pop) < int(config.POPULATION_SIZE):
                 if random.random() > cross_prob:
@@ -498,8 +584,8 @@ def run_ga(generations: int, progress_callback=None) -> Tuple[Optional[List[Dict
                     if config.GROUP_PHASE:
                         enforce_group_members(child)
                 else:
-                    p1 = random.choice(elites)
-                    p2 = random.choice(elites)
+                    p1 = _tournament_select(pop, scores, tournament_size=tournament_size)
+                    p2 = _tournament_select(pop, scores, tournament_size=tournament_size)
                     child = uniform_crossover(p1, p2)
                 mutate(child)
                 teleport(child)
@@ -517,9 +603,16 @@ def run_ga(generations: int, progress_callback=None) -> Tuple[Optional[List[Dict
     
     config.GROUP_PHASE = False
     config.GROUPS_FOR_GA = []
-    config.DEBUG_GROUP_ASSERT = True
 
     update_grid_counts()
+
+    # GA-Lauf immer aus den Basiswerten der UI/Konfiguration starten.
+    config.CROSSOVER_PROB = float(getattr(config, "BASE_CROSSOVER_PROB", config.CROSSOVER_PROB))
+    config.MUTATION_PROB = float(getattr(config, "BASE_MUTATION_PROB", config.MUTATION_PROB))
+    config.MUTATION_ROT_PROB = float(getattr(config, "BASE_MUTATION_ROT_PROB", config.MUTATION_ROT_PROB))
+    config.MUTATION_POS_STD = int(getattr(config, "BASE_MUTATION_POS_STD", config.MUTATION_POS_STD))
+    config.SWAP_PROB = float(getattr(config, "BASE_SWAP_PROB", config.SWAP_PROB))
+    config.TELEPORT_PROB = float(getattr(config, "BASE_TELEPORT_PROB", 0.0))
 
     pop = init_population()
     best_ind: Optional[List[Dict]]  = None

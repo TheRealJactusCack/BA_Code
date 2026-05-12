@@ -21,23 +21,23 @@ OUT_OF_BOUNDS_PENALTY = 1e7
 DIST_SCALE = 1.0
 OBSTACLE_PENALTY = 1e9
 
-BASE_CROSSOVER_PROB = 0.8
+BASE_CROSSOVER_PROB = 0.85
 CROSSOVER_PROB = BASE_CROSSOVER_PROB
 
-BASE_MUTATION_PROB = 0.2
-BASE_MUTATION_POS_STD: int = round(1.0 / GRID_SIZE)
+BASE_MUTATION_PROB = 0.12
+BASE_MUTATION_POS_STD: int = max(1, round(1.0 / GRID_SIZE))
 
-BASE_MUTATION_ROT_PROB = 0.2
+BASE_MUTATION_ROT_PROB = 0.04
 MUTATION_ROT_PROB = BASE_MUTATION_ROT_PROB
 
-BASE_SWAP_PROB = 0.05
+BASE_SWAP_PROB = 0.04
 SWAP_PROB = BASE_SWAP_PROB
 
 MUTATION_PROB = BASE_MUTATION_PROB
 MUTATION_POS_STD: int = BASE_MUTATION_POS_STD
 
 BASE_TELEPORT_PROB = 0.0
-TELEPORT_PROB = BASE_TELEPORT_PROB
+TELEPORT_PROB = BASE_TELEPORT_PROB  # wird nur bei Stagnation sehr niedrig aktiviert
 
 ROTATIONS = [0, 90, 180, 270]
 
@@ -69,7 +69,7 @@ All_UTILITY_WEIGHT = 1
 
 MODUS = "Rotation"  # "Rotation" oder "Tauschen"
 
-CREATE_GROUPS = False
+CREATE_GROUPS = True
 GROUPS_FOR_GA = []
 GROUP_PHASE = False
-GROUP_BY = "Worker" # aktuell: Worker, Manhatten möglich
+GROUP_BY = "Manhatten" # aktuell: Worker, Manhatten, Flow möglich (Worker nur wenn jeder Worker an zwei Maschinen ist, Flow wenn grade Anzahl an Maschinen und Linienflow)

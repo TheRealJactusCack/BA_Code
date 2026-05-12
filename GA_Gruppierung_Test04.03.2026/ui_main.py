@@ -356,6 +356,16 @@ class MainWindow(QWidget):
         config.SWAP_PROB = float(self.mutation_swap_prob_spin.value())
         config.GENERATIONS = int(self.generations_spin.value())
 
+        # Die UI-Werte sind die Basiswerte des neuen GA-Laufs.
+        # Die dynamische Parametrisierung darf sie während des Laufs verändern,
+        # aber der nächste Lauf startet wieder von diesen eingestellten Werten.
+        config.BASE_MUTATION_PROB = float(config.MUTATION_PROB)
+        config.BASE_MUTATION_POS_STD = int(config.MUTATION_POS_STD)
+        config.BASE_MUTATION_ROT_PROB = float(config.MUTATION_ROT_PROB)
+        config.BASE_SWAP_PROB = float(config.SWAP_PROB)
+        config.BASE_TELEPORT_PROB = 0.0
+        config.TELEPORT_PROB = 0.0
+
         config.MATERIAL_WEIGHT = int(self.material_edit.text() or "1")
         config.WORKER_WEIGHT = int(self.worker_edit.text() or "1")
         config.All_UTILITY_WEIGHT = int(self.util_edit.text() or "1")
